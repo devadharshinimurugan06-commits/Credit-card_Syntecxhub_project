@@ -1,842 +1,763 @@
-import streamlit as st
-import pandas as pd
+import os
 from pathlib import Path
+import importlib
+
+import pandas as pd
+import streamlit as st
 
 
 # ============================================================
-# PAGE CONFIG
+# PAGE CONFIGURATION
 # ============================================================
 
 st.set_page_config(
     page_title="FraudGuard AI",
     page_icon="💳",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded",
+)
+
+BASE_DIR = Path(__file__).resolve().parent
+
+
+# ============================================================
+# FIND TRAINED MODEL
+# ============================================================
+
+MODEL_NAMES = [
+    "final_fraud_model.pkl",
+    "fraud_model.pkl",
+    "xgboost_fraud_model.pkl",
+    "best_fraud_model.pkl",
+]
+
+
+def find_model():
+    # First check repository root
+    for name in MODEL_NAMES:
+        path = BASE_DIR / name
+
+        if path.exists():
+            return path
+
+    # Then check folders inside repository
+    for name in MODEL_NAMES:
+        matches = list(BASE_DIR.rglob(name))
+
+        if matches:
+            return matches[0]
+
+    # Last fallback: fraud/xgb related pickle
+    matches = [
+        path
+        for path in BASE_DIR.rglob("*.pkl")
+        if (
+            "fraud" in path.name.lower()
+            or "xgb" in path.name.lower()
+        )
+    ]
+
+    if matches:
+        return matches[0]
+
+    return None
+
+
+MODEL_PATH = find_model()
+
+
+# ============================================================
+# LOAD EXISTING AGENT
+# ============================================================
+
+fraud_detection_agent = None
+agent_load_error = None
+
+
+if MODEL_PATH is not None:
+
+    original_cwd = Path.cwd()
+
+    try:
+
+        # IMPORTANT:
+        # Your tools.py currently loads:
+        # joblib.load("final_fraud_model.pkl")
+        #
+        # So temporarily change working directory to the
+        # model's folder before importing the agent.
+
+        os.chdir(MODEL_PATH.parent)
+
+        try:
+            agent_module = importlib.import_module("agent")
+        except ModuleNotFoundError:
+            agent_module = importlib.import_module("agents")
+
+        fraud_detection_agent = getattr(
+            agent_module,
+            "fraud_detection_agent"
+        )
+
+    except Exception as e:
+
+        agent_load_error = str(e)
+
+    finally:
+
+        os.chdir(original_cwd)
+
+else:
+
+    agent_load_error = (
+        "No fraud model .pkl file was found "
+        "inside the repository."
+    )
+
+
+# ============================================================
+# MODEL FEATURE COLUMNS
+# ============================================================
+
+DEFAULT_FEATURES = (
+    ["Time"]
+    + [f"V{i}" for i in range(1, 29)]
+    + ["Amount"]
 )
 
 
-# ============================================================
-# PATH
-# ============================================================
+def get_feature_columns():
 
-BASE_DIR = Path(__file__).resolve().parent
+    try:
+
+        tools_module = importlib.import_module("tools")
+
+        columns = getattr(
+            tools_module,
+            "FEATURE_COLUMNS",
+            None
+        )
+
+        if columns:
+            return list(columns)
+
+    except Exception:
+        pass
+
+    return DEFAULT_FEATURES
+
+
+FEATURE_COLUMNS = get_feature_columns()
 
 
 # ============================================================
 # CUSTOM CSS
 # ============================================================
 
-st.markdown("""
-<style>
-
-/* =========================================================
-   GLOBAL
-========================================================= */
-
-.stApp {
-    background: linear-gradient(
-        135deg,
-        #fff7fb 0%,
-        #ffeaf4 50%,
-        #f8efff 100%
-    );
-}
-
-.main .block-container {
-    max-width: 1250px;
-    padding-top: 25px;
-    padding-bottom: 50px;
-}
-
-html, body, [class*="css"] {
-    color: #171717 !important;
-}
-
-p, label, span {
-    color: #242424;
-}
-
-h1, h2, h3, h4 {
-    color: #181818 !important;
-    font-weight: 800 !important;
-}
-
-
-/* =========================================================
-   TOP HEADER
-========================================================= */
-
-.main-header {
-    background: linear-gradient(
-        135deg,
-        #9c145d,
-        #d51d76,
-        #7d2bb4
-    );
+st.markdown(
+    """
+    <style>
 
-    border-radius: 24px;
+    /* ================================
+       MAIN BACKGROUND
+       ================================ */
 
-    padding: 30px 36px;
+    .stApp {
+        background:
+            linear-gradient(
+                135deg,
+                #fff8fc 0%,
+                #fdebf5 55%,
+                #f7efff 100%
+            );
+    }
+
+
+    /* ================================
+       HEADER
+       ================================ */
 
-    margin-bottom: 22px;
+    [data-testid="stHeader"] {
+        background: rgba(255,255,255,0);
+    }
 
-    box-shadow:
-        0 15px 35px rgba(130, 25, 100, 0.20);
-}
 
-.main-title {
-    color: white !important;
-    font-size: 38px;
-    font-weight: 900;
-    margin: 0;
-}
+    /* ================================
+       MAIN CONTENT
+       ================================ */
 
-.main-subtitle {
-    color: rgba(255,255,255,0.94) !important;
-    font-size: 16px;
-    margin-top: 6px;
-}
+    .main .block-container {
+        max-width: 1350px;
+        padding-top: 2rem;
+        padding-bottom: 3rem;
+    }
 
 
-/* =========================================================
-   TOP NAVIGATION
-========================================================= */
+    /* ================================
+       DARK TEXT
+       ================================ */
+
+    h1,
+    h2,
+    h3,
+    h4 {
+        color: #241b28 !important;
+        font-weight: 800 !important;
+    }
+
+    p,
+    label,
+    .stMarkdown {
+        color: #29232c !important;
+    }
+
+
+    /* ================================
+       SIDEBAR
+       ================================ */
+
+    [data-testid="stSidebar"] {
+        background: #17131b;
+    }
+
+    [data-testid="stSidebar"] * {
+        color: #f5f2f7 !important;
+    }
+
+
+    /* ================================
+       METRICS
+       ================================ */
+
+    [data-testid="stMetric"] {
+        background: #ffffff;
+        border: 1px solid #e7cddd;
+        border-radius: 16px;
+        padding: 18px;
+
+        box-shadow:
+            0 8px 22px
+            rgba(90, 35, 75, 0.08);
+    }
+
+    [data-testid="stMetricValue"] {
+        color: #a31361 !important;
+        font-weight: 850 !important;
+    }
+
+
+    /* ================================
+       BUTTON
+       ================================ */
+
+    .stButton > button {
+        border-radius: 12px;
+        font-weight: 800;
+        min-height: 46px;
+    }
 
-div[data-testid="stTabs"] button {
-    color: #5a1640 !important;
-    font-weight: 800 !important;
-    font-size: 15px !important;
-}
 
-div[data-testid="stTabs"] button[aria-selected="true"] {
-    color: #a91562 !important;
-}
+    /* ================================
+       TABS
+       ================================ */
 
+    div[data-baseweb="tab-list"] {
+        gap: 8px;
+    }
 
-/* =========================================================
-   SECTION TITLE
-========================================================= */
+    button[data-baseweb="tab"] {
+        font-weight: 800 !important;
+        color: #4a3d48 !important;
+    }
 
-.section-title {
-    color: #94165a !important;
-    font-size: 29px;
-    font-weight: 900;
-    margin-top: 10px;
-    margin-bottom: 7px;
-}
+    button[data-baseweb="tab"][aria-selected="true"] {
+        color: #a31361 !important;
+    }
 
-.section-subtitle {
-    color: #444444 !important;
-    font-size: 15px;
-    line-height: 1.6;
-    margin-bottom: 22px;
-}
 
+    /* ================================
+       FILE UPLOADER
+       ================================ */
 
-/* =========================================================
-   WHITE CONTAINER
-========================================================= */
+    [data-testid="stFileUploader"] {
+        background: #ffffff;
+        border: 1px solid #e7cddd;
+        border-radius: 14px;
+    }
 
-.white-card {
-    background: rgba(255,255,255,0.97);
 
-    border: 1px solid #efc5da;
+    /* ================================
+       FOOTER
+       ================================ */
 
-    border-radius: 20px;
+    .footer-text {
+        text-align: center;
+        color: #6a5b66;
+        font-size: 13px;
+        padding: 25px 0 5px 0;
+    }
 
-    padding: 24px;
-
-    box-shadow:
-        0 8px 24px rgba(120,30,90,0.08);
-
-    margin-bottom: 20px;
-}
-
-.card-title {
-    color: #8f1858 !important;
-    font-size: 21px;
-    font-weight: 900;
-    margin-bottom: 8px;
-}
-
-.card-text {
-    color: #404040 !important;
-    font-size: 14px;
-    line-height: 1.65;
-}
-
-
-/* =========================================================
-   INPUT AREA
-========================================================= */
-
-.input-container {
-    background: white;
-
-    border: 2px solid #e9bfd5;
-
-    border-radius: 20px;
-
-    padding: 25px;
-
-    box-shadow:
-        0 8px 25px rgba(120,30,90,0.08);
-
-    margin-top: 15px;
-    margin-bottom: 20px;
-}
-
-.input-heading {
-    color: #8f1858 !important;
-    font-size: 23px;
-    font-weight: 900;
-    margin-bottom: 5px;
-}
-
-.input-help {
-    color: #555555 !important;
-    font-size: 14px;
-    margin-bottom: 15px;
-}
-
-
-/* =========================================================
-   SELECTED TRANSACTION
-========================================================= */
-
-.transaction-header {
-    background: #fff3f8;
-
-    border-left: 5px solid #c81769;
-
-    border-radius: 10px;
-
-    padding: 13px 16px;
-
-    color: #7f124e !important;
-
-    font-weight: 900;
-
-    margin-top: 18px;
-    margin-bottom: 10px;
-}
-
-
-/* =========================================================
-   RESULT CONTAINER
-========================================================= */
-
-.result-container {
-    background: white;
-
-    border: 2px solid #dba9c7;
-
-    border-radius: 22px;
-
-    padding: 28px;
-
-    margin-top: 25px;
-
-    box-shadow:
-        0 12px 32px rgba(120,30,90,0.12);
-}
-
-.result-heading {
-    color: #8f1858 !important;
-
-    font-size: 26px;
-
-    font-weight: 900;
-
-    margin-bottom: 20px;
-}
-
-
-/* =========================================================
-   RESULT CARDS
-========================================================= */
-
-.result-card {
-    background: #fff9fc;
-
-    border: 1px solid #edc8da;
-
-    border-radius: 16px;
-
-    padding: 20px;
-
-    text-align: center;
-
-    min-height: 130px;
-
-    display: flex;
-
-    flex-direction: column;
-
-    justify-content: center;
-}
-
-.result-label {
-    color: #555555 !important;
-
-    font-size: 12px;
-
-    font-weight: 800;
-
-    text-transform: uppercase;
-
-    letter-spacing: 0.6px;
-
-    margin-bottom: 8px;
-}
-
-.result-value {
-    color: #97155c !important;
-
-    font-size: 26px;
-
-    font-weight: 950;
-}
-
-
-/* =========================================================
-   RISK BOX
-========================================================= */
-
-.risk-box {
-    margin-top: 20px;
-
-    border-radius: 17px;
-
-    padding: 20px;
-
-    text-align: center;
-}
-
-.risk-title {
-    font-size: 13px;
-
-    font-weight: 800;
-
-    color: #444444 !important;
-
-    text-transform: uppercase;
-}
-
-.risk-value {
-    font-size: 30px;
-
-    font-weight: 950;
-
-    margin-top: 5px;
-}
-
-
-/* =========================================================
-   PROGRESS
-========================================================= */
-
-.progress-title {
-    color: #444444 !important;
-
-    font-size: 14px;
-
-    font-weight: 800;
-
-    margin-top: 20px;
-
-    margin-bottom: 5px;
-}
-
-
-/* =========================================================
-   BUTTON
-========================================================= */
-
-.stButton > button {
-    background: linear-gradient(
-        90deg,
-        #c81769,
-        #8d28bd
-    ) !important;
-
-    color: white !important;
-
-    border: none !important;
-
-    border-radius: 12px !important;
-
-    font-size: 16px !important;
-
-    font-weight: 900 !important;
-
-    padding: 12px 20px !important;
-
-    min-height: 48px;
-
-    box-shadow:
-        0 8px 20px rgba(140,30,110,0.22);
-}
-
-.stButton > button:hover {
-    background: linear-gradient(
-        90deg,
-        #a91459,
-        #70229b
-    ) !important;
-
-    color: white !important;
-}
-
-
-/* =========================================================
-   FILE UPLOADER
-========================================================= */
-
-[data-testid="stFileUploader"] {
-    background: #fffafd;
-
-    border: 1px solid #e8bfd4;
-
-    border-radius: 14px;
-
-    padding: 10px;
-}
-
-
-/* =========================================================
-   DATAFRAME
-========================================================= */
-
-[data-testid="stDataFrame"] {
-    border: 1px solid #e8bfd4;
-
-    border-radius: 12px;
-}
-
-
-/* =========================================================
-   FOOTER
-========================================================= */
-
-.footer {
-    text-align: center;
-
-    color: #555555 !important;
-
-    font-size: 13px;
-
-    margin-top: 45px;
-
-    padding-top: 20px;
-
-    border-top: 1px solid #e8c5d7;
-}
-
-
-/* =========================================================
-   HIDE STREAMLIT SIDEBAR
-========================================================= */
-
-section[data-testid="stSidebar"] {
-    display: none;
-}
-
-button[kind="header"] {
-    display: none;
-}
-
-</style>
-""", unsafe_allow_html=True)
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 
 # ============================================================
-# HEADER
+# SIDEBAR
 # ============================================================
 
-st.markdown("""
-<div class="main-header">
+with st.sidebar:
 
-    <div class="main-title">
-        💳 FraudGuard AI
-    </div>
+    st.markdown("## 💳 FraudGuard AI")
 
-    <div class="main-subtitle">
-        Credit Card Fraud Detection using Machine Learning
-        and Agentic AI Risk Decision Support
-    </div>
-
-</div>
-""", unsafe_allow_html=True)
-
-
-# ============================================================
-# FOUR TOP TABS
-# ============================================================
-
-tab1, tab2, tab3, tab4 = st.tabs([
-    "🏠 Dashboard",
-    "🔍 Fraud Detection",
-    "🤖 Agentic AI",
-    "ℹ️ About Project"
-])
-
-
-# ============================================================
-# TAB 1 — DASHBOARD
-# ============================================================
-
-with tab1:
-
-    st.markdown(
-        '<div class="section-title">FraudGuard AI</div>',
-        unsafe_allow_html=True
+    st.caption(
+        "Credit Card Fraud Detection"
     )
 
-    st.markdown(
-        """
-        <div class="section-subtitle">
-            A credit-card fraud detection application that takes
-            transaction data, generates an ML fraud prediction,
-            and passes the result through an agentic risk-decision layer.
-        </div>
-        """,
-        unsafe_allow_html=True
+    st.divider()
+
+    if MODEL_PATH:
+
+        st.success("Model detected")
+
+        st.caption(
+            f"Model: {MODEL_PATH.name}"
+        )
+
+    else:
+
+        st.error("Model not found")
+
+    st.divider()
+
+    st.markdown("### Project")
+
+    st.write("**Model:** XGBoost")
+
+    st.write(
+        "**AI Layer:** Agent-based risk decision"
+    )
+
+    st.write(
+        "**Input:** CSV / Manual"
+    )
+
+    st.write(
+        "**Output:** Fraud + Risk + Action"
     )
 
 
-    st.markdown("""
-    <div class="white-card">
+# ============================================================
+# MAIN HEADER
+# ============================================================
 
-        <div class="card-title">
-            How to Use the Application
-        </div>
+st.title("💳 FraudGuard AI")
 
-        <div class="card-text">
-
-            <b>Step 1:</b> Open <b>Fraud Detection</b>.<br><br>
-
-            <b>Step 2:</b> Upload your transaction CSV file.<br><br>
-
-            <b>Step 3:</b> Select the transaction row that you want
-            to test.<br><br>
-
-            <b>Step 4:</b> Click <b>Run FraudGuard AI</b>.<br><br>
-
-            <b>Step 5:</b> The application sends the transaction
-            through the trained ML model and Agentic AI layer.<br><br>
-
-            <b>Step 6:</b> The final result shows fraud probability,
-            prediction, risk level and recommended action.
-
-        </div>
-
-    </div>
-    """, unsafe_allow_html=True)
-
-
-    st.markdown(
-        '<div class="section-title">System Flow</div>',
-        unsafe_allow_html=True
-    )
-
-
-    flow1, flow2, flow3, flow4 = st.columns(4)
-
-
-    with flow1:
-
-        st.markdown("""
-        <div class="white-card" style="text-align:center;">
-
-            <div style="font-size:32px;">📄</div>
-
-            <div class="card-title">
-                CSV Input
-            </div>
-
-            <div class="card-text">
-                Transaction data is uploaded.
-            </div>
-
-        </div>
-        """, unsafe_allow_html=True)
-
-
-    with flow2:
-
-        st.markdown("""
-        <div class="white-card" style="text-align:center;">
-
-            <div style="font-size:32px;">🧠</div>
-
-            <div class="card-title">
-                ML Prediction
-            </div>
-
-            <div class="card-text">
-                XGBoost predicts fraud probability.
-            </div>
-
-        </div>
-        """, unsafe_allow_html=True)
-
-
-    with flow3:
-
-        st.markdown("""
-        <div class="white-card" style="text-align:center;">
-
-            <div style="font-size:32px;">🤖</div>
-
-            <div class="card-title">
-                Agent
-            </div>
-
-            <div class="card-text">
-                The agent assesses transaction risk.
-            </div>
-
-        </div>
-        """, unsafe_allow_html=True)
-
-
-    with flow4:
-
-        st.markdown("""
-        <div class="white-card" style="text-align:center;">
-
-            <div style="font-size:32px;">🚦</div>
-
-            <div class="card-title">
-                Decision
-            </div>
-
-            <div class="card-text">
-                Approve, Review or Block.
-            </div>
-
-        </div>
-        """, unsafe_allow_html=True)
+st.write(
+    "Credit Card Fraud Detection using a trained "
+    "XGBoost model with agent-based risk assessment "
+    "and business decision support."
+)
 
 
 # ============================================================
-# TAB 2 — FRAUD DETECTION
+# AGENT STATUS
 # ============================================================
 
-with tab2:
+if agent_load_error:
 
-    st.markdown(
-        '<div class="section-title">🔍 Fraud Detection</div>',
-        unsafe_allow_html=True
+    st.warning(
+        "The fraud agent could not be initialized."
     )
 
-    st.markdown(
-        """
-        <div class="section-subtitle">
-            Upload your CSV, select one transaction, and run the
-            FraudGuard AI prediction.
-        </div>
-        """,
-        unsafe_allow_html=True
+    with st.expander("Technical Status"):
+
+        st.write(
+            f"Repository: {BASE_DIR}"
+        )
+
+        st.write(
+            f"Detected model: {MODEL_PATH}"
+        )
+
+        st.code(
+            agent_load_error
+        )
+
+
+# ============================================================
+# FOUR TABS
+# ============================================================
+
+tab_dashboard, tab_detection, tab_agent, tab_about = st.tabs(
+    [
+        "🏠 Dashboard",
+        "🔍 Fraud Detection",
+        "🤖 Agentic AI",
+        "ℹ️ About Project",
+    ]
+)
+
+
+# ============================================================
+# DASHBOARD
+# ============================================================
+
+with tab_dashboard:
+
+    st.header(
+        "Fraud Detection Dashboard"
+    )
+
+    st.write(
+        "Use the **Fraud Detection** tab to upload "
+        "a transaction CSV, select a row, or enter "
+        "transaction values manually."
+    )
+
+    st.divider()
+
+    c1, c2, c3, c4 = st.columns(4)
+
+    with c1:
+        st.metric(
+            "Precision",
+            "98.73%"
+        )
+
+    with c2:
+        st.metric(
+            "Recall",
+            "82.11%"
+        )
+
+    with c3:
+        st.metric(
+            "F1 Score",
+            "89.66%"
+        )
+
+    with c4:
+        st.metric(
+            "ROC-AUC",
+            "98.35%"
+        )
+
+    st.divider()
+
+    st.subheader(
+        "System Flow"
+    )
+
+    st.write(
+        "**Transaction Input → XGBoost Prediction → "
+        "Agent Risk Assessment → Business Decision**"
+    )
+
+    st.info(
+        "The transaction is sent to the trained model "
+        "through the existing fraud agent. The agent then "
+        "returns the fraud prediction, risk level and "
+        "recommended business action."
     )
 
 
-    # --------------------------------------------------------
-    # INPUT
-    # --------------------------------------------------------
+# ============================================================
+# FRAUD DETECTION
+# ============================================================
 
-    st.markdown("""
-    <div class="input-container">
+with tab_detection:
 
-        <div class="input-heading">
-            1. Transaction Input
-        </div>
-
-        <div class="input-help">
-            Upload the CSV containing the transaction records.
-        </div>
-
-    </div>
-    """, unsafe_allow_html=True)
-
-
-    uploaded_file = st.file_uploader(
-        "Upload Transaction CSV",
-        type=["csv"],
-        key="fraud_csv"
+    st.header(
+        "🔍 Fraud Detection"
     )
 
+    st.write(
+        "Provide one transaction and run the trained "
+        "FraudGuard AI model."
+    )
 
-    if uploaded_file is not None:
+    st.divider()
 
-        try:
+    input_mode = st.radio(
+        "Input method",
+        [
+            "📁 Project / Uploaded CSV",
+            "✍️ Manual Entry"
+        ],
+        horizontal=True,
+        label_visibility="collapsed"
+    )
 
-            df = pd.read_csv(uploaded_file)
+    transaction = None
 
-            st.success(
-                f"CSV loaded successfully — {len(df):,} transactions found."
+
+    # ========================================================
+    # CSV INPUT
+    # ========================================================
+
+    if input_mode == "📁 Project / Uploaded CSV":
+
+        project_csvs = sorted(
+            list(BASE_DIR.glob("*.csv"))
+            + list(BASE_DIR.glob("data/*.csv"))
+            + list(BASE_DIR.glob("dataset/*.csv"))
+        )
+
+        preferred = [
+            p
+            for p in project_csvs
+            if p.name.lower()
+            in {
+                "creditcard_small.csv",
+                "creditcard.csv",
+                "credit_card.csv"
+            }
+        ]
+
+        csv_choice = None
+
+        if preferred:
+
+            csv_choice = st.selectbox(
+                "Choose project CSV",
+                preferred,
+                format_func=lambda p: p.name
             )
 
+        uploaded = st.file_uploader(
+            "Or upload your transaction CSV",
+            type=["csv"]
+        )
 
-            # ------------------------------------------------
-            # REQUIRED FEATURES
-            # ------------------------------------------------
+        df = None
 
-            required_features = [
-                "Time",
-                "V1", "V2", "V3", "V4", "V5", "V6", "V7",
-                "V8", "V9", "V10", "V11", "V12", "V13", "V14",
-                "V15", "V16", "V17", "V18", "V19", "V20", "V21",
-                "V22", "V23", "V24", "V25", "V26", "V27", "V28",
-                "Amount"
-            ]
+        if uploaded is not None:
 
+            try:
 
-            missing = [
-                c for c in required_features
-                if c not in df.columns
-            ]
+                df = pd.read_csv(
+                    uploaded
+                )
 
+                st.success(
+                    f"CSV loaded successfully — "
+                    f"{len(df):,} rows"
+                )
 
-            if missing:
+            except Exception as e:
 
                 st.error(
-                    "The uploaded CSV does not contain all required "
-                    "transaction features."
+                    f"Could not read CSV: {e}"
                 )
 
-                st.write("Missing columns:")
+        elif csv_choice is not None:
 
-                st.code(", ".join(missing))
+            try:
 
-                st.stop()
+                df = pd.read_csv(
+                    csv_choice
+                )
 
+                st.success(
+                    f"Project CSV loaded — "
+                    f"{csv_choice.name}"
+                )
 
-            # ------------------------------------------------
-            # TRANSACTION SELECTION
-            # ------------------------------------------------
+            except Exception as e:
 
-            st.markdown("""
-            <div class="transaction-header">
-                2. Select Transaction
-            </div>
-            """, unsafe_allow_html=True)
+                st.error(
+                    f"Could not read project CSV: {e}"
+                )
 
+        else:
 
-            row_number = st.number_input(
-                "Transaction row",
-                min_value=0,
-                max_value=len(df) - 1,
-                value=0,
-                step=1,
-                help="Select the row that you want the AI system to analyze."
+            st.info(
+                "Upload the transaction CSV here."
             )
 
 
-            selected_row = df.iloc[int(row_number)]
+        # ====================================================
+        # VALIDATE CSV
+        # ====================================================
 
+        if df is not None and not df.empty:
 
-            st.caption(
-                f"Selected transaction: Row {int(row_number)}"
-            )
+            missing_columns = [
+                column
+                for column in FEATURE_COLUMNS
+                if column not in df.columns
+            ]
 
+            if missing_columns:
 
-            # ------------------------------------------------
-            # INPUT PREVIEW
-            # ------------------------------------------------
-
-            with st.expander(
-                "👁️ View selected transaction input",
-                expanded=True
-            ):
-
-                input_df = pd.DataFrame(
-                    [selected_row[required_features]]
+                st.error(
+                    "This CSV does not match the trained "
+                    "model input."
                 )
+
+                st.write(
+                    "**Missing columns:**",
+                    ", ".join(missing_columns)
+                )
+
+                st.caption(
+                    "Expected model columns: "
+                    + ", ".join(FEATURE_COLUMNS)
+                )
+
+            else:
+
+                st.subheader(
+                    "1. Select Transaction"
+                )
+
+                row_number = st.number_input(
+                    "Transaction row",
+                    min_value=0,
+                    max_value=len(df) - 1,
+                    value=0,
+                    step=1
+                )
+
+                selected_row = df.iloc[
+                    int(row_number)
+                ].copy()
+
+                transaction = {
+                    feature: float(
+                        selected_row[feature]
+                    )
+                    for feature in FEATURE_COLUMNS
+                }
 
                 st.dataframe(
-                    input_df,
+                    pd.DataFrame(
+                        [transaction]
+                    ),
                     width="stretch",
                     hide_index=True
                 )
 
-
-            # ------------------------------------------------
-            # RUN BUTTON
-            # ------------------------------------------------
-
-            st.markdown("""
-            <div class="transaction-header">
-                3. Run FraudGuard AI
-            </div>
-            """, unsafe_allow_html=True)
-
-
-            run_button = st.button(
-                "🚀 Run FraudGuard AI",
-                type="primary",
-                width="stretch",
-                key="run_fraud"
-            )
-
-
-            if run_button:
-
-                # Import only when required.
-                # This prevents the whole UI from crashing
-                # before the user uploads a transaction.
-
-                try:
-
-                    from agent import fraud_detection_agent
-
-                except Exception as e:
-
-                    st.error(
-                        "The Agent could not be loaded."
-                    )
-
-                    st.code(str(e))
-
-                    st.stop()
-
-
-                transaction = (
-                    selected_row[required_features]
-                    .to_dict()
+                st.caption(
+                    "Only the model features are sent "
+                    "for prediction. The Class/target "
+                    "column is not sent to the model."
                 )
 
 
-                # ------------------------------------------------
-                # AGENT EXECUTION
-                # ------------------------------------------------
+    # ========================================================
+    # MANUAL INPUT
+    # ========================================================
 
-                try:
+    else:
 
-                    with st.spinner(
-                        "FraudGuard AI is analyzing the transaction..."
-                    ):
+        st.subheader(
+            "1. Enter Transaction"
+        )
 
-                        result = fraud_detection_agent(
-                            transaction
-                        )
+        st.caption(
+            "Enter the same features used by the trained "
+            "XGBoost model."
+        )
 
+        values = {}
 
-                except Exception as e:
+        with st.form(
+            "manual_transaction_form"
+        ):
 
-                    st.error(
-                        "Fraud detection failed."
+            cols = st.columns(3)
+
+            for index, feature in enumerate(
+                FEATURE_COLUMNS
+            ):
+
+                with cols[index % 3]:
+
+                    values[feature] = st.number_input(
+                        feature,
+                        value=0.0,
+                        format="%.8f"
                     )
 
-                    st.code(str(e))
+            submitted = st.form_submit_button(
+                "Use These Values",
+                type="primary",
+                width="stretch"
+            )
 
-                    st.stop()
+        if submitted:
+
+            transaction = values
+
+            st.success(
+                "Manual transaction prepared successfully."
+            )
 
 
-                # ------------------------------------------------
-                # GET RESULT
-                # ------------------------------------------------
+    # ========================================================
+    # PREDICTION
+    # ========================================================
+
+    st.divider()
+
+    st.subheader(
+        "2. Run Fraud Detection"
+    )
+
+    run_prediction = st.button(
+        "🚀 Predict Fraud Risk",
+        type="primary",
+        width="stretch"
+    )
+
+
+    if run_prediction:
+
+        if transaction is None:
+
+            st.error(
+                "Please provide a CSV transaction "
+                "or enter the values manually."
+            )
+
+        elif fraud_detection_agent is None:
+
+            st.error(
+                "Fraud agent is not available."
+            )
+
+            st.info(
+                "Please verify that the trained model "
+                "and agent.py/tools.py are committed "
+                "to the GitHub repository."
+            )
+
+        else:
+
+            try:
+
+                clean_transaction = {
+                    column: float(
+                        transaction[column]
+                    )
+                    for column in FEATURE_COLUMNS
+                }
+
+                with st.spinner(
+                    "FraudGuard AI is analyzing..."
+                ):
+
+                    result = fraud_detection_agent(
+                        clean_transaction
+                    )
+
+
+                # =================================================
+                # AGENT RESULT
+                # =================================================
 
                 fraud_probability = float(
                     result["fraud_probability"]
@@ -855,405 +776,258 @@ with tab2:
                 ).upper()
 
 
-                prediction_text = (
-                    "FRAUDULENT"
-                    if prediction == 1
-                    else "GENUINE"
-                )
-
-
                 # =================================================
-                # RESULT — EVERYTHING INSIDE ONE BOX
+                # OUTPUT
                 # =================================================
 
-                st.markdown(
-                    '<div class="result-container">',
-                    unsafe_allow_html=True
+                st.divider()
+
+                st.subheader(
+                    "3. Prediction Result"
                 )
-
-
-                st.markdown(
-                    '<div class="result-heading">'
-                    '✅ FraudGuard AI Result'
-                    '</div>',
-                    unsafe_allow_html=True
-                )
-
-
-                # ------------------------------------------------
-                # RESULT CARDS
-                # ------------------------------------------------
 
                 r1, r2, r3 = st.columns(3)
 
-
                 with r1:
 
-                    st.markdown(f"""
-                    <div class="result-card">
-
-                        <div class="result-label">
-                            Fraud Probability
-                        </div>
-
-                        <div class="result-value">
-                            {fraud_probability * 100:.2f}%
-                        </div>
-
-                    </div>
-                    """, unsafe_allow_html=True)
-
+                    st.metric(
+                        "Fraud Probability",
+                        f"{fraud_probability * 100:.2f}%"
+                    )
 
                 with r2:
 
-                    st.markdown(f"""
-                    <div class="result-card">
-
-                        <div class="result-label">
-                            ML Prediction
-                        </div>
-
-                        <div class="result-value">
-                            {prediction_text}
-                        </div>
-
-                    </div>
-                    """, unsafe_allow_html=True)
-
+                    st.metric(
+                        "ML Prediction",
+                        (
+                            "FRAUDULENT"
+                            if prediction == 1
+                            else "GENUINE"
+                        )
+                    )
 
                 with r3:
 
-                    st.markdown(f"""
-                    <div class="result-card">
-
-                        <div class="result-label">
-                            Agent Decision
-                        </div>
-
-                        <div class="result-value">
-                            {action}
-                        </div>
-
-                    </div>
-                    """, unsafe_allow_html=True)
-
-
-                # ------------------------------------------------
-                # RISK
-                # ------------------------------------------------
-
-                if risk_level == "HIGH":
-
-                    risk_bg = "#fff0f0"
-                    risk_border = "#dc4b4b"
-                    risk_color = "#b42323"
-
-                    risk_icon = "🔴"
-
-                elif risk_level == "MEDIUM":
-
-                    risk_bg = "#fff8e8"
-                    risk_border = "#e2a52c"
-                    risk_color = "#9a6500"
-
-                    risk_icon = "🟠"
-
-                else:
-
-                    risk_bg = "#eefaf1"
-                    risk_border = "#49a866"
-                    risk_color = "#24733b"
-
-                    risk_icon = "🟢"
-
-
-                st.markdown(f"""
-                <div class="risk-box"
-                     style="
-                        background:{risk_bg};
-                        border:2px solid {risk_border};
-                     ">
-
-                    <div class="risk-title">
-                        Risk Level
-                    </div>
-
-                    <div class="risk-value"
-                         style="color:{risk_color} !important;">
-
-                        {risk_icon} {risk_level}
-
-                    </div>
-
-                </div>
-                """, unsafe_allow_html=True)
-
-
-                # ------------------------------------------------
-                # PROBABILITY BAR
-                # ------------------------------------------------
-
-                st.markdown(
-                    f"""
-                    <div class="progress-title">
-                        Fraud Probability: {fraud_probability * 100:.2f}%
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+                    st.metric(
+                        "Recommended Action",
+                        action
+                    )
 
 
                 st.progress(
                     min(
-                        max(fraud_probability, 0.0),
+                        max(
+                            fraud_probability,
+                            0.0
+                        ),
                         1.0
+                    ),
+                    text=(
+                        f"Fraud Probability: "
+                        f"{fraud_probability * 100:.2f}%"
                     )
                 )
 
 
-                # ------------------------------------------------
-                # FINAL DECISION
-                # ------------------------------------------------
+                # =================================================
+                # RISK
+                # =================================================
 
-                st.markdown(f"""
-                <div style="
-                    margin-top:20px;
-                    padding:16px;
-                    background:#f8f1f6;
-                    border-radius:13px;
-                    text-align:center;
-                ">
+                if risk_level == "HIGH":
 
-                    <div style="
-                        color:#555555;
-                        font-size:12px;
-                        font-weight:800;
-                        text-transform:uppercase;
-                    ">
-                        Final Agent Recommendation
-                    </div>
+                    st.error(
+                        f"🔴 HIGH RISK — {action}"
+                    )
 
-                    <div style="
-                        color:#8f1858;
-                        font-size:24px;
-                        font-weight:950;
-                        margin-top:5px;
-                    ">
-                        {action}
-                    </div>
+                elif risk_level == "MEDIUM":
 
-                </div>
-                """, unsafe_allow_html=True)
+                    st.warning(
+                        f"🟠 MEDIUM RISK — {action}"
+                    )
+
+                else:
+
+                    st.success(
+                        f"🟢 LOW RISK — {action}"
+                    )
 
 
-                st.markdown(
-                    '</div>',
-                    unsafe_allow_html=True
+                # =================================================
+                # FINAL AGENT OUTPUT
+                # =================================================
+
+                st.divider()
+
+                st.subheader(
+                    "Agent Output"
+                )
+
+                st.write(
+                    f"**ML Prediction:** "
+                    f"{'FRAUDULENT' if prediction == 1 else 'GENUINE'}"
+                )
+
+                st.write(
+                    f"**Fraud Probability:** "
+                    f"{fraud_probability * 100:.2f}%"
+                )
+
+                st.write(
+                    f"**Risk Level:** "
+                    f"{risk_level}"
+                )
+
+                st.write(
+                    f"**Recommended Action:** "
+                    f"{action}"
                 )
 
 
-        except Exception as e:
+            except Exception as e:
 
-            st.error(
-                f"Unable to process the CSV: {e}"
-            )
+                st.error(
+                    "Prediction failed."
+                )
 
+                st.exception(e)
+
+
+# ============================================================
+# AGENTIC AI
+# ============================================================
+
+with tab_agent:
+
+    st.header(
+        "🤖 Agentic AI"
+    )
+
+    st.write(
+        "FraudGuard AI uses the existing agent workflow "
+        "from the repository."
+    )
+
+    st.divider()
+
+    st.subheader(
+        "Agent Workflow"
+    )
+
+    st.write(
+        "**Transaction → Fraud Prediction → "
+        "Risk Assessment → Business Decision**"
+    )
+
+    st.divider()
+
+    st.subheader(
+        "Agent Output"
+    )
+
+    st.write(
+        "• Fraud probability"
+    )
+
+    st.write(
+        "• Fraud / genuine prediction"
+    )
+
+    st.write(
+        "• Risk level"
+    )
+
+    st.write(
+        "• Recommended action"
+    )
+
+    st.divider()
+
+    if MODEL_PATH:
+
+        st.success(
+            f"Trained model detected: "
+            f"{MODEL_PATH.name}"
+        )
 
     else:
 
-        st.info(
-            "Please upload your transaction CSV to begin."
+        st.error(
+            "No trained fraud model detected."
         )
 
 
 # ============================================================
-# TAB 3 — AGENTIC AI
+# ABOUT PROJECT
 # ============================================================
 
-with tab3:
+with tab_about:
 
-    st.markdown(
-        '<div class="section-title">🤖 Agentic AI</div>',
-        unsafe_allow_html=True
+    st.header(
+        "ℹ️ About Project"
     )
 
-    st.markdown(
-        """
-        <div class="section-subtitle">
-            The agent receives the ML prediction and converts it into
-            a practical risk-based decision.
-        </div>
-        """,
-        unsafe_allow_html=True
+    st.write(
+        "**Project:** Credit Card Fraud Detection"
     )
 
-
-    st.markdown("""
-    <div class="white-card">
-
-        <div class="card-title">
-            Agent Decision Flow
-        </div>
-
-        <div class="card-text"
-             style="font-size:18px; font-weight:800;">
-
-            Transaction
-            &nbsp; → &nbsp;
-            XGBoost Prediction
-            &nbsp; → &nbsp;
-            Risk Assessment
-            &nbsp; → &nbsp;
-            Final Decision
-
-        </div>
-
-    </div>
-    """, unsafe_allow_html=True)
-
-
-    a1, a2, a3 = st.columns(3)
-
-
-    with a1:
-
-        st.markdown("""
-        <div class="white-card">
-
-            <div class="card-title">
-                1. ML Prediction
-            </div>
-
-            <div class="card-text">
-                The trained XGBoost model analyzes the transaction
-                features and produces a fraud probability.
-            </div>
-
-        </div>
-        """, unsafe_allow_html=True)
-
-
-    with a2:
-
-        st.markdown("""
-        <div class="white-card">
-
-            <div class="card-title">
-                2. Risk Assessment
-            </div>
-
-            <div class="card-text">
-                The agent interprets the fraud probability and
-                determines the transaction risk level.
-            </div>
-
-        </div>
-        """, unsafe_allow_html=True)
-
-
-    with a3:
-
-        st.markdown("""
-        <div class="white-card">
-
-            <div class="card-title">
-                3. Business Decision
-            </div>
-
-            <div class="card-text">
-                The agent converts the risk assessment into
-                APPROVE, REVIEW or BLOCK.
-            </div>
-
-        </div>
-        """, unsafe_allow_html=True)
-
-
-# ============================================================
-# TAB 4 — ABOUT PROJECT
-# ============================================================
-
-with tab4:
-
-    st.markdown(
-        '<div class="section-title">ℹ️ About Project</div>',
-        unsafe_allow_html=True
+    st.write(
+        "**Machine Learning Model:** XGBoost"
     )
 
+    st.write(
+        "**Application:** Streamlit"
+    )
 
-    c1, c2 = st.columns(2)
+    st.write(
+        "**AI Layer:** Tool-based Agentic AI"
+    )
 
+    st.write(
+        "**Developer:** Devadharshini Murugan"
+    )
+
+    st.divider()
+
+    st.subheader(
+        "Model Performance"
+    )
+
+    c1, c2, c3, c4 = st.columns(4)
 
     with c1:
-
-        st.markdown("""
-        <div class="white-card">
-
-            <div class="card-title">
-                Project Information
-            </div>
-
-            <div class="card-text">
-
-                <b>Project:</b>
-                Credit Card Fraud Detection<br><br>
-
-                <b>Machine Learning Model:</b>
-                XGBoost<br><br>
-
-                <b>Application:</b>
-                Streamlit<br><br>
-
-                <b>AI Layer:</b>
-                Agentic AI<br><br>
-
-                <b>Developer:</b>
-                Devadharshini Murugan
-
-            </div>
-
-        </div>
-        """, unsafe_allow_html=True)
-
+        st.metric(
+            "Precision",
+            "98.73%"
+        )
 
     with c2:
+        st.metric(
+            "Recall",
+            "82.11%"
+        )
 
-        st.markdown("""
-        <div class="white-card">
+    with c3:
+        st.metric(
+            "F1 Score",
+            "89.66%"
+        )
 
-            <div class="card-title">
-                Dataset
-            </div>
-
-            <div class="card-text">
-
-                The application works with credit-card transaction
-                records containing the transaction time,
-                PCA-transformed features V1–V28 and transaction amount.
-
-                <br><br>
-
-                The target <b>Class</b> column, when present in the
-                uploaded CSV, is not passed to the prediction model.
-
-            </div>
-
-        </div>
-        """, unsafe_allow_html=True)
+    with c4:
+        st.metric(
+            "ROC-AUC",
+            "98.35%"
+        )
 
 
 # ============================================================
 # FOOTER
 # ============================================================
 
-st.markdown("""
-<div class="footer">
-
-    FraudGuard AI • Credit Card Fraud Detection & Agentic Risk Decision System
-
-    <br><br>
-
-    Built by <b>Devadharshini Murugan</b>
-
-</div>
-""", unsafe_allow_html=True)
+st.markdown(
+    """
+    <div class="footer-text">
+        FraudGuard AI • Built by Devadharshini Murugan
+    </div>
+    """,
+    unsafe_allow_html=True
+)
