@@ -1,6 +1,5 @@
 # ============================================================
-# FraudGuard AI
-# Credit Card Fraud Detection + Agentic AI
+# Agentic AI - Credit Card Fraud Detection
 # Complete Streamlit App
 # ============================================================
 
@@ -19,7 +18,7 @@ import streamlit as st
 # ============================================================
 
 st.set_page_config(
-    page_title="FraudGuard AI",
+    page_title="Agentic AI - Credit Card Fraud Detection",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -60,11 +59,11 @@ st.markdown(
     /* ---------- SIDEBAR ---------- */
 
     [data-testid="stSidebar"] {
-        background: #21151d;
+        background: #ffd9ea;
     }
 
     [data-testid="stSidebar"] * {
-        color: white !important;
+        color: #4a1730 !important;
     }
 
     /* ---------- HEADINGS ---------- */
@@ -237,35 +236,24 @@ MODEL_CANDIDATES = [
 
 
 def find_model_file():
-    """
-    Find the fraud model inside the project folder.
-    """
-
-    # First check exact expected filenames
     for filename in MODEL_CANDIDATES:
         path = BASE_DIR / filename
-
         if path.exists():
             return path
 
-    # Check common folders
     for folder in ["models", "model", "artifacts", "saved_models"]:
-
         folder_path = BASE_DIR / folder
 
         if not folder_path.exists():
             continue
 
         for filename in MODEL_CANDIDATES:
-
             path = folder_path / filename
 
             if path.exists():
                 return path
 
-    # Last fallback: search recursively
     for path in BASE_DIR.rglob("*.pkl"):
-
         name = path.name.lower()
 
         if (
@@ -297,13 +285,6 @@ def load_agent():
     if fraud_detection_agent is not None:
         return fraud_detection_agent
 
-    # The current tools.py uses:
-    #
-    # joblib.load("final_fraud_model.pkl")
-    #
-    # Therefore temporarily change working directory
-    # to the model directory while importing the agent.
-
     original_cwd = os.getcwd()
 
     try:
@@ -311,7 +292,6 @@ def load_agent():
         if MODEL_PATH is not None:
             os.chdir(MODEL_PATH.parent)
 
-        # Try agent.py first
         try:
 
             agent_module = importlib.import_module("agent")
@@ -323,7 +303,6 @@ def load_agent():
 
         except Exception as first_error:
 
-            # Try agents.py if project uses plural filename
             try:
 
                 agents_module = importlib.import_module("agents")
@@ -378,7 +357,6 @@ def get_feature_columns():
         )
 
         if columns is not None:
-
             return list(columns)
 
     except Exception:
@@ -405,7 +383,6 @@ DATASET_CANDIDATES = [
 
 def find_dataset():
 
-    # Root folder
     for filename in DATASET_CANDIDATES:
 
         path = BASE_DIR / filename
@@ -413,7 +390,6 @@ def find_dataset():
         if path.exists():
             return path
 
-    # Common folders
     for folder in ["data", "dataset", "datasets"]:
 
         folder_path = BASE_DIR / folder
@@ -428,7 +404,6 @@ def find_dataset():
             if path.exists():
                 return path
 
-    # Recursive search
     for path in BASE_DIR.rglob("*.csv"):
 
         name = path.name.lower()
@@ -448,7 +423,6 @@ DATASET_PATH = find_dataset()
 
 @st.cache_data
 def load_project_dataset(path_string):
-
     return pd.read_csv(path_string)
 
 
@@ -459,16 +433,12 @@ def load_project_dataset(path_string):
 def normalize_probability(value):
 
     try:
-
         probability = float(value)
 
     except Exception:
-
         return 0.0
 
-    # If model/agent gives percentage such as 94.5
     if probability > 1:
-
         probability = probability / 100
 
     probability = max(
@@ -611,13 +581,11 @@ def display_prediction_result(result):
             action
         )
 
-    # Progress
     st.progress(
         probability,
         text=f"Fraud probability: {probability * 100:.2f}%"
     )
 
-    # Risk message
     if "HIGH" in risk:
 
         st.error(
@@ -642,55 +610,16 @@ def display_prediction_result(result):
             f"Risk: {risk} | Recommended action: {action}"
         )
 
-
-    # ========================================================
-    # AGENT ANALYSIS
-    # ========================================================
-
     st.markdown("### 🤖 Agent Analysis")
 
     probability_percent = probability * 100
 
-    if "HIGH" in risk:
-
-        st.info(
-            f"The agent returned a fraud probability of "
-            f"**{probability_percent:.2f}%**, with an ML prediction of "
-            f"**{prediction}**. The agent assessed the transaction as "
-            f"**{risk} risk** and recommended **{action}**."
-        )
-
-    elif "MEDIUM" in risk:
-
-        st.info(
-            f"The agent returned a fraud probability of "
-            f"**{probability_percent:.2f}%**, with an ML prediction of "
-            f"**{prediction}**. The agent assessed the transaction as "
-            f"**{risk} risk** and recommended **{action}**."
-        )
-
-    elif "LOW" in risk:
-
-        st.info(
-            f"The agent returned a fraud probability of "
-            f"**{probability_percent:.2f}%**, with an ML prediction of "
-            f"**{prediction}**. The agent assessed the transaction as "
-            f"**{risk} risk** and recommended **{action}**."
-        )
-
-    else:
-
-        st.info(
-            f"The agent returned a fraud probability of "
-            f"**{probability_percent:.2f}%**, with an ML prediction of "
-            f"**{prediction}**. The agent assessed the transaction as "
-            f"**{risk} risk** and recommended **{action}**."
-        )
-
-
-    # ========================================================
-    # AGENT DECISION PATH
-    # ========================================================
+    st.info(
+        f"The agent returned a fraud probability of "
+        f"**{probability_percent:.2f}%**, with an ML prediction of "
+        f"**{prediction}**. The agent assessed the transaction as "
+        f"**{risk} risk** and recommended **{action}**."
+    )
 
     st.markdown("### 🔄 Agent Decision Path")
 
@@ -724,11 +653,6 @@ def display_prediction_result(result):
             action
         )
 
-
-    # ========================================================
-    # ORIGINAL AGENT OUTPUT
-    # ========================================================
-
     with st.expander("🤖 View Agent Execution Details"):
 
         if isinstance(result, dict):
@@ -750,6 +674,47 @@ def display_prediction_result(result):
 
 
 # ============================================================
+# NEW: CSV ACTION CHECK
+# ============================================================
+
+def get_action_from_result(result):
+
+    return normalize_action(
+        get_result_value(
+            result,
+            "recommended_action",
+            "action",
+            "decision",
+            default="Not Available"
+        )
+    )
+
+
+def run_transaction_prediction(row):
+
+    transaction_series = row.copy()
+
+    if "Class" in transaction_series.index:
+        transaction_series = transaction_series.drop("Class")
+
+    if "class" in transaction_series.index:
+        transaction_series = transaction_series.drop("class")
+
+    transaction = transaction_series.to_dict()
+
+    cleaned_transaction = {}
+
+    for key, value in transaction.items():
+
+        try:
+            cleaned_transaction[key] = float(value)
+        except Exception:
+            cleaned_transaction[key] = value
+
+    return fraud_detection_agent(cleaned_transaction)
+
+
+# ============================================================
 # SIDEBAR
 # ============================================================
 
@@ -758,7 +723,7 @@ with st.sidebar:
     st.markdown(
         """
         <div style="
-            background:linear-gradient(135deg,#7d174f,#a82b75);
+            background:linear-gradient(135deg,#f5a8c9,#f7c6dc);
             padding:22px;
             border-radius:18px;
             margin-bottom:20px;
@@ -767,17 +732,17 @@ with st.sidebar:
         <div style="
             font-size:25px;
             font-weight:900;
-            color:white;
+            color:#4a1730;
         ">
-        🛡️ FraudGuard AI
+        🛡️ Agentic AI
         </div>
 
         <div style="
             font-size:13px;
-            color:#ffe8f4;
+            color:#6b2948;
             margin-top:5px;
         ">
-        Intelligent Credit Card Fraud Detection
+        Credit Card Fraud Detection
         </div>
 
         </div>
@@ -830,7 +795,7 @@ with st.sidebar:
 if page == "🏠 Dashboard":
 
     st.markdown(
-        '<div class="main-title">🛡️ FraudGuard AI</div>',
+        '<div class="main-title">🤖 Agentic AI - Credit Card Fraud Detection</div>',
         unsafe_allow_html=True
     )
 
@@ -844,7 +809,6 @@ if page == "🏠 Dashboard":
         unsafe_allow_html=True
     )
 
-    # Model metrics
     st.markdown(
         "### 📊 Model Performance"
     )
@@ -901,7 +865,6 @@ if page == "🏠 Dashboard":
 
     st.write("")
 
-    # Objective
     st.markdown(
         """
         <div class="info-card">
@@ -926,7 +889,6 @@ if page == "🏠 Dashboard":
 
     st.write("")
 
-    # Dataset Insights
     st.markdown("### 📊 Dataset Insights")
 
     d1, d2, d3, d4 = st.columns(4)
@@ -992,7 +954,6 @@ if page == "🏠 Dashboard":
 
     st.write("")
 
-    # Workflow
     st.markdown("### 🔄 Fraud Detection Workflow")
 
     w1, w2, w3, w4 = st.columns(4)
@@ -1040,199 +1001,87 @@ elif page == "🔍 Fraud Detection":
     st.markdown(
         """
         <div class="subtitle">
-        Select a transaction from the project dataset or enter
-        transaction values manually.
+        Select a transaction number from the project CSV and
+        let FraudGuard AI predict its fraud risk.
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    # --------------------------------------------------------
-    # INPUT METHOD
-    # --------------------------------------------------------
-
-    input_method = st.radio(
-        "Choose transaction input",
-        [
-            "Select from Project Dataset",
-            "Manual Input"
-        ],
-        horizontal=True
-    )
-
     transaction = None
+    selected_index = None
 
-    # --------------------------------------------------------
-    # DATASET INPUT
-    # --------------------------------------------------------
+    if DATASET_PATH is None:
 
-    if input_method == "Select from Project Dataset":
+        st.error(
+            "Project dataset was not found."
+        )
 
-        st.markdown("### 📂 Project Dataset")
-
-        if DATASET_PATH is None:
-
-            st.error(
-                "Project dataset was not found."
-            )
-
-            st.info(
-                "Add your credit card CSV file to the same "
-                "GitHub repository as app.py."
-            )
-
-        else:
-
-            try:
-
-                df = load_project_dataset(
-                    str(DATASET_PATH)
-                )
-
-                st.success(
-                    f"Dataset loaded: {DATASET_PATH.name} "
-                    f"({len(df):,} transactions)"
-                )
-
-                # --------------------------------------------
-                # Transaction selector
-                # --------------------------------------------
-
-                if len(df) <= 5000:
-
-                    selected_label = st.selectbox(
-                        "Select Transaction",
-                        [
-                            f"Transaction {i + 1}"
-                            for i in range(len(df))
-                        ]
-                    )
-
-                    selected_index = int(
-                        selected_label.split()[-1]
-                    ) - 1
-
-                else:
-
-                    st.info(
-                        "Large dataset detected. "
-                        "Use the transaction number below."
-                    )
-
-                    selected_index = st.number_input(
-                        "Transaction number",
-                        min_value=1,
-                        max_value=len(df),
-                        value=1,
-                        step=1
-                    ) - 1
-
-                selected_row = df.iloc[
-                    int(selected_index)
-                ]
-
-                # Show selected transaction
-                st.markdown("### 👁️ Selected Transaction")
-
-                display_row = selected_row.to_frame().T
-
-                st.dataframe(
-                    display_row,
-                    width="stretch",
-                    hide_index=True
-                )
-
-                # Remove target column
-                transaction_series = selected_row.copy()
-
-                if "Class" in transaction_series.index:
-
-                    transaction_series = transaction_series.drop(
-                        "Class"
-                    )
-
-                if "class" in transaction_series.index:
-
-                    transaction_series = transaction_series.drop(
-                        "class"
-                    )
-
-                transaction = transaction_series.to_dict()
-
-            except Exception as e:
-
-                st.error(
-                    f"Unable to load project dataset: {e}"
-                )
-
-
-    # --------------------------------------------------------
-    # MANUAL INPUT
-    # --------------------------------------------------------
+        st.info(
+            "Add your credit card CSV file to the same "
+            "GitHub repository as app.py."
+        )
 
     else:
 
-        st.markdown("### ✍️ Manual Transaction Input")
+        try:
 
-        st.caption(
-            "Enter the transaction features required by the fraud model."
-        )
-
-        # Time + Amount
-        c1, c2 = st.columns(2)
-
-        with c1:
-
-            time_value = st.number_input(
-                "Time",
-                value=0.0,
-                step=1.0
+            df = load_project_dataset(
+                str(DATASET_PATH)
             )
 
-        with c2:
-
-            amount_value = st.number_input(
-                "Amount",
-                value=100.0,
-                min_value=0.0,
-                step=10.0
+            st.success(
+                f"Dataset loaded: {DATASET_PATH.name} "
+                f"({len(df):,} transactions)"
             )
 
-        transaction = {}
+            # ------------------------------------------------
+            # Transaction number only
+            # ------------------------------------------------
 
-        transaction["Time"] = time_value
+            st.markdown("### 📂 Select Transaction")
 
-        # V1-V28
-        st.markdown("### 🔢 Transaction Features")
+            selected_index = st.number_input(
+                "Transaction Number",
+                min_value=1,
+                max_value=len(df),
+                value=1,
+                step=1
+            ) - 1
 
-        v_columns = [
-            f"V{i}"
-            for i in range(1, 29)
-        ]
+            selected_row = df.iloc[int(selected_index)]
 
-        for start in range(0, 28, 4):
+            st.markdown("### 👁️ Selected Transaction")
 
-            cols = st.columns(4)
+            display_row = selected_row.to_frame().T
 
-            for j, col in enumerate(
-                v_columns[start:start + 4]
-            ):
+            st.dataframe(
+                display_row,
+                width="stretch",
+                hide_index=True
+            )
 
-                with cols[j]:
+            transaction_series = selected_row.copy()
 
-                    transaction[col] = st.number_input(
-                        col,
-                        value=0.0,
-                        step=0.01,
-                        format="%.6f",
-                        key=f"manual_{col}"
-                    )
+            if "Class" in transaction_series.index:
 
-        transaction["Amount"] = amount_value
+                transaction_series = transaction_series.drop(
+                    "Class"
+                )
 
-    # --------------------------------------------------------
-    # PREDICT
-    # --------------------------------------------------------
+            if "class" in transaction_series.index:
+
+                transaction_series = transaction_series.drop(
+                    "class"
+                )
+
+            transaction = transaction_series.to_dict()
+
+        except Exception as e:
+
+            st.error(
+                f"Unable to load project dataset: {e}"
+            )
 
     st.write("")
 
@@ -1271,37 +1120,13 @@ elif page == "🔍 Fraud Detection":
 
             try:
 
-                # --------------------------------------------
-                # Ensure numeric values
-                # --------------------------------------------
-
-                cleaned_transaction = {}
-
-                for key, value in transaction.items():
-
-                    try:
-
-                        cleaned_transaction[key] = float(value)
-
-                    except Exception:
-
-                        cleaned_transaction[key] = value
-
-                # --------------------------------------------
-                # Run actual agent
-                # --------------------------------------------
-
                 with st.spinner(
                     "Running FraudGuard AI..."
                 ):
 
-                    result = fraud_detection_agent(
-                        cleaned_transaction
+                    result = run_transaction_prediction(
+                        selected_row
                     )
-
-                # --------------------------------------------
-                # Show result directly below button
-                # --------------------------------------------
 
                 display_prediction_result(
                     result
@@ -1321,6 +1146,208 @@ elif page == "🔍 Fraud Detection":
                     "Check that the transaction columns match "
                     "the features expected by the trained model."
                 )
+
+    # ========================================================
+    # CSV PERFORMANCE CHECK
+    # ========================================================
+
+    st.markdown("---")
+
+    st.markdown("### 📊 CSV Performance Check")
+
+    st.caption(
+        "Test three transactions from the CSV and check whether "
+        "the agent recommends APPROVE, REVIEW or BLOCK."
+    )
+
+    if DATASET_PATH is not None and fraud_detection_agent is not None:
+
+        c1, c2, c3 = st.columns(3)
+
+        with c1:
+
+            test_1 = st.number_input(
+                "Transaction 1",
+                min_value=1,
+                max_value=len(df),
+                value=1,
+                step=1,
+                key="csv_test_1"
+            )
+
+        with c2:
+
+            test_2 = st.number_input(
+                "Transaction 2",
+                min_value=1,
+                max_value=len(df),
+                value=min(2, len(df)),
+                step=1,
+                key="csv_test_2"
+            )
+
+        with c3:
+
+            test_3 = st.number_input(
+                "Transaction 3",
+                min_value=1,
+                max_value=len(df),
+                value=min(3, len(df)),
+                step=1,
+                key="csv_test_3"
+            )
+
+        if st.button(
+            "🔎 Check 3 Transactions",
+            width="stretch",
+            key="check_three_transactions"
+        ):
+
+            test_numbers = [test_1, test_2, test_3]
+            rows = []
+
+            with st.spinner("Checking selected CSV transactions..."):
+
+                for number in test_numbers:
+
+                    try:
+
+                        row = df.iloc[int(number) - 1]
+
+                        result = run_transaction_prediction(row)
+
+                        probability = normalize_probability(
+                            get_result_value(
+                                result,
+                                "fraud_probability",
+                                "probability",
+                                "fraud_prob",
+                                default=0
+                            )
+                        )
+
+                        prediction = normalize_prediction(
+                            get_result_value(
+                                result,
+                                "prediction",
+                                "predicted_class",
+                                "class",
+                                "fraud_prediction"
+                            )
+                        )
+
+                        risk = normalize_risk(
+                            get_result_value(
+                                result,
+                                "risk_level",
+                                "risk",
+                                default="UNKNOWN"
+                            )
+                        )
+
+                        action = get_action_from_result(result)
+
+                        actual_class = "Not Available"
+
+                        if "Class" in row.index:
+                            actual_class = (
+                                "Fraud"
+                                if str(row["Class"]).strip() == "1"
+                                else "Legitimate"
+                            )
+
+                        elif "class" in row.index:
+                            actual_class = (
+                                "Fraud"
+                                if str(row["class"]).strip() == "1"
+                                else "Legitimate"
+                            )
+
+                        rows.append(
+                            {
+                                "Transaction": int(number),
+                                "Actual Class": actual_class,
+                                "ML Prediction": prediction,
+                                "Fraud Probability": f"{probability * 100:.2f}%",
+                                "Risk Level": risk,
+                                "Recommended Action": action
+                            }
+                        )
+
+                    except Exception as e:
+
+                        rows.append(
+                            {
+                                "Transaction": int(number),
+                                "Actual Class": "Error",
+                                "ML Prediction": str(e),
+                                "Fraud Probability": "-",
+                                "Risk Level": "-",
+                                "Recommended Action": "-"
+                            }
+                        )
+
+            result_df = pd.DataFrame(rows)
+
+            st.markdown("#### Selected Transaction Results")
+
+            st.dataframe(
+                result_df,
+                width="stretch",
+                hide_index=True
+            )
+
+            approve_count = int(
+                result_df["Recommended Action"]
+                .astype(str)
+                .str.contains("APPROVE", case=False, na=False)
+                .sum()
+            )
+
+            review_count = int(
+                result_df["Recommended Action"]
+                .astype(str)
+                .str.contains("REVIEW", case=False, na=False)
+                .sum()
+            )
+
+            block_count = int(
+                result_df["Recommended Action"]
+                .astype(str)
+                .str.contains("BLOCK", case=False, na=False)
+                .sum()
+            )
+
+            s1, s2, s3 = st.columns(3)
+
+            with s1:
+                st.metric(
+                    "APPROVE",
+                    approve_count
+                )
+
+            with s2:
+                st.metric(
+                    "REVIEW",
+                    review_count
+                )
+
+            with s3:
+                st.metric(
+                    "BLOCK",
+                    block_count
+                )
+
+            st.info(
+                "These three action counts are based on the actual "
+                "agent output for the selected CSV transactions."
+            )
+
+    elif DATASET_PATH is not None:
+
+        st.warning(
+            "Agent is not loaded, so CSV performance checking is unavailable."
+        )
 
 
 # ============================================================
@@ -1378,7 +1405,6 @@ elif page == "🤖 Agentic AI":
 
     st.write("")
 
-    # Tool 1
     st.markdown(
         """
         <div class="info-card">
@@ -1403,7 +1429,6 @@ elif page == "🤖 Agentic AI":
         unsafe_allow_html=True
     )
 
-    # Tool 2
     st.markdown(
         """
         <div class="info-card">
@@ -1425,7 +1450,6 @@ elif page == "🤖 Agentic AI":
         unsafe_allow_html=True
     )
 
-    # Tool 3
     st.markdown(
         """
         <div class="info-card">
