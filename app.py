@@ -1,7 +1,9 @@
-import os
-import joblib
-import pandas as pd
 import streamlit as st
+import pandas as pd
+import numpy as np
+
+from sklearn.model_selection import train_test_split
+from xgboost import XGBClassifier
 
 
 # ============================================================
@@ -16,35 +18,71 @@ st.set_page_config(
 
 
 # ============================================================
-# SIMPLE CSS
+# SIMPLE UI
 # ============================================================
 
 st.markdown("""
 <style>
 
-.main {
-    background-color: #fff7fc;
+.stApp {
+    background: linear-gradient(
+        135deg,
+        #fff7fb,
+        #ffeaf4,
+        #f8efff
+    );
 }
 
-h1 {
-    color: #9d175b;
+.block-container {
+    max-width: 1200px;
+    padding-top: 40px;
 }
 
-h2, h3 {
+.title {
+    font-size: 42px;
+    font-weight: 800;
     color: #9d175b;
+    margin-bottom: 5px;
+}
+
+.subtitle {
+    font-size: 17px;
+    color: #555555;
+    margin-bottom: 30px;
+}
+
+.result-card {
+    background: white;
+    border-radius: 18px;
+    padding: 25px;
+    border: 1px solid #efc6da;
+    box-shadow: 0 8px 25px rgba(120,30,90,0.08);
+}
+
+.result-number {
+    font-size: 30px;
+    font-weight: 800;
+    color: #b31368;
+}
+
+.result-label {
+    font-size: 13px;
+    color: #666666;
+    margin-bottom: 5px;
 }
 
 .stButton > button {
-    background-color: #c21875;
+    width: 100%;
+    border-radius: 10px;
+    background: #c21875;
     color: white;
-    border-radius: 8px;
+    font-weight: 700;
     border: none;
-    padding: 10px 22px;
-    font-weight: 600;
+    padding: 12px;
 }
 
 .stButton > button:hover {
-    background-color: #9d175b;
+    background: #9d175b;
     color: white;
 }
 
@@ -53,386 +91,370 @@ h2, h3 {
 
 
 # ============================================================
-# MODEL LOADING
+# DATASET
 # ============================================================
 
-@st.cache_resource
-def load_model():
-
-    possible_models = [
-        "best_xgboost_model.pkl",
-        "xgboost_model.pkl",
-        "best_model.pkl",
-        "best_classification_model.pkl",
-        "fraud_model.pkl",
-        "model.pkl"
-    ]
-
-    for model_file in possible_models:
-
-        if os.path.exists(model_file):
-            return joblib.load(model_file), model_file
-
-    return None, None
-
-
-model, model_name = load_model()
-
-
-# ============================================================
-# TARGET COLUMN DETECTION
-# ============================================================
-
-def find_target_column(df):
-
-    possible_targets = [
-        "Class",
-        "class",
-        "Fraud",
-        "fraud",
-        "is_fraud",
-        "Is_Fraud",
-        "fraud_flag",
-        "Fraud_Flag",
-        "target",
-        "Target"
-    ]
-
-    for col in possible_targets:
-        if col in df.columns:
-            return col
-
-    return None
-
-
-# ============================================================
-# AGENTIC RISK DECISION
-# ============================================================
-
-def fraud_agent(fraud_probability):
-
-    probability = fraud_probability * 100
-
-    if probability >= 80:
-
-        decision = "BLOCK"
-        risk = "HIGH"
-
-    elif probability >= 40:
-
-        decision = "REVIEW"
-        risk = "MEDIUM"
-
-    else:
-
-        decision = "APPROVE"
-        risk = "LOW"
-
-    return risk, decision, probability
-
-
-# ============================================================
-# PREDICTION FUNCTION
-# ============================================================
-
-def make_prediction(transaction):
-
-    input_data = transaction.copy()
-
-    # Remove target if it exists
-    target_col = find_target_column(input_data)
-
-    if target_col is not None:
-        input_data = input_data.drop(columns=[target_col])
-
-    # Remove common index columns
-    unwanted_columns = [
-        "Unnamed: 0",
-        "index",
-        "Index"
-    ]
-
-    input_data = input_data.drop(
-        columns=[c for c in unwanted_columns if c in input_data.columns],
-        errors="ignore"
-    )
-
-    # Convert categorical columns where possible
-    for col in input_data.columns:
-
-        if input_data[col].dtype == "object":
-
-            input_data[col] = pd.to_numeric(
-                input_data[col],
-                errors="coerce"
-            )
-
-    input_data = input_data.fillna(0)
-
-    # --------------------------------------------------------
-    # Align columns with model feature names if available
-    # --------------------------------------------------------
-
-    if hasattr(model, "feature_names_in_"):
-
-        expected_features = list(model.feature_names_in_)
-
-        for col in expected_features:
-
-            if col not in input_data.columns:
-                input_data[col] = 0
-
-        input_data = input_data[expected_features]
-
-    # --------------------------------------------------------
-    # Prediction
-    # --------------------------------------------------------
-
-    prediction = model.predict(input_data)[0]
-
-    # --------------------------------------------------------
-    # Fraud probability
-    # --------------------------------------------------------
-
-    if hasattr(model, "predict_proba"):
-
-        probabilities = model.predict_proba(input_data)[0]
-
-        classes = list(model.classes_)
-
-        # Find fraud class
-        fraud_index = None
-
-        for possible_class in [1, "1", "Fraud", "fraud", "TRUE", True]:
-
-            if possible_class in classes:
-                fraud_index = classes.index(possible_class)
-                break
-
-        if fraud_index is not None:
-            fraud_probability = probabilities[fraud_index]
-        else:
-            # For binary classification, use second probability
-            fraud_probability = (
-                probabilities[1]
-                if len(probabilities) > 1
-                else probabilities[0]
-            )
-
-    else:
-
-        fraud_probability = float(prediction)
-
-    return prediction, fraud_probability
-
-
-# ============================================================
-# HEADER
-# ============================================================
-
-st.title("💳 FraudGuard AI")
-
-st.write(
-    "Credit Card Fraud Detection using Machine Learning "
-    "and Agentic AI risk decision support."
+DATA_URL = (
+    "https://raw.githubusercontent.com/"
+    "devadharshinimurugan06-commits/"
+    "Credit-card_Syntecxhub_project/"
+    "main/creditcard_small.csv"
 )
 
 
 # ============================================================
-# MODEL STATUS
+# LOAD DATA
 # ============================================================
 
-if model is None:
+@st.cache_data
+def load_dataset():
 
-    st.error(
-        "Fraud detection model not found. "
-        "Please place your trained XGBoost .pkl model "
-        "in the same folder as app.py."
+    df = pd.read_csv(DATA_URL)
+
+    # Same cleaning used in the notebook
+    df = df.drop_duplicates().reset_index(drop=True)
+
+    return df
+
+
+# ============================================================
+# TRAIN XGBOOST
+# ============================================================
+
+@st.cache_resource
+def train_model(df):
+
+    X = df.drop("Class", axis=1)
+    y = df["Class"]
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X,
+        y,
+        test_size=0.20,
+        random_state=42,
+        stratify=y
+    )
+
+    model = XGBClassifier(
+        n_estimators=200,
+        max_depth=6,
+        learning_rate=0.05,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        random_state=42,
+        eval_metric="logloss"
+    )
+
+    model.fit(X_train, y_train)
+
+    return model
+
+
+# ============================================================
+# AGENTIC DECISION
+# ============================================================
+
+def fraud_agent(fraud_probability):
+
+    # Threshold selected from the notebook
+    threshold = 0.25
+
+    # ML prediction using the selected threshold
+    if fraud_probability >= threshold:
+        prediction = 1
+    else:
+        prediction = 0
+
+    # Agent risk assessment
+    if fraud_probability >= 0.70:
+
+        risk_level = "HIGH"
+        action = "BLOCK"
+
+    elif fraud_probability >= 0.30:
+
+        risk_level = "MEDIUM"
+        action = "REVIEW"
+
+    else:
+
+        risk_level = "LOW"
+        action = "APPROVE"
+
+    return prediction, risk_level, action
+
+
+# ============================================================
+# LOAD DATASET
+# ============================================================
+
+try:
+
+    df = load_dataset()
+
+except Exception as e:
+
+    st.error("Unable to load the project CSV.")
+
+    st.info(
+        "Please check that creditcard_small.csv is available "
+        "in the GitHub repository."
     )
 
     st.stop()
 
 
 # ============================================================
-# CSV INPUT
+# TRAIN MODEL
 # ============================================================
 
-st.subheader("Transaction Input")
+try:
 
-uploaded_file = st.file_uploader(
-    "Upload Transaction CSV",
-    type=["csv"]
+    model = train_model(df)
+
+except Exception as e:
+
+    st.error("Unable to train the XGBoost model.")
+
+    st.exception(e)
+
+    st.stop()
+
+
+# ============================================================
+# HEADER
+# ============================================================
+
+st.markdown(
+    '<div class="title">💳 FraudGuard AI</div>',
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    '<div class="subtitle">'
+    'Credit Card Fraud Detection using XGBoost and Agentic AI'
+    '</div>',
+    unsafe_allow_html=True
 )
 
 
 # ============================================================
-# LOAD CSV
+# INPUT
 # ============================================================
 
-if uploaded_file is not None:
+st.subheader("Transaction Input")
 
-    df = pd.read_csv(uploaded_file)
-
-    st.success(
-        f"CSV loaded successfully — {len(df):,} transactions found."
-    )
-
-else:
-
-    possible_csv_files = [
-        "credit_card.csv",
-        "creditcard.csv",
-        "fraud_detection.csv",
-        "transactions.csv",
-        "transaction.csv",
-        "project.csv",
-        "data.csv"
-    ]
-
-    df = None
-
-    for csv_file in possible_csv_files:
-
-        if os.path.exists(csv_file):
-
-            df = pd.read_csv(csv_file)
-
-            st.success(
-                f"Project CSV loaded — {len(df):,} transactions found."
-            )
-
-            break
-
-    if df is None:
-
-        st.info(
-            "Please upload your transaction CSV file to start fraud detection."
-        )
-
-        st.stop()
+st.write(
+    f"Project dataset loaded: **{len(df):,} transactions**"
+)
 
 
-# ============================================================
-# TRANSACTION SELECTION
-# ============================================================
-
-st.subheader("Select Transaction")
+# Select transaction row
 
 row_number = st.number_input(
-    "Transaction Row",
+    "Select Transaction",
     min_value=1,
     max_value=len(df),
     value=1,
     step=1
 )
 
-selected_index = row_number - 1
 
-transaction = df.iloc[[selected_index]].copy()
+selected_row = df.iloc[[int(row_number) - 1]]
 
 
 # ============================================================
-# SHOW INPUT DATA
+# OPTIONAL VIEW
 # ============================================================
 
-with st.expander("View Transaction Data"):
+with st.expander("View selected transaction"):
 
     st.dataframe(
-        transaction,
+        selected_row.drop(columns=["Class"]),
         use_container_width=True
     )
 
 
 # ============================================================
-# DETECTION BUTTON
+# DETECTION
 # ============================================================
+
+st.write("")
 
 if st.button("🔍 Detect Fraud"):
 
     try:
 
-        prediction, fraud_probability = make_prediction(
-            transaction
+        # Remove target column
+        transaction = selected_row.drop(
+            columns=["Class"]
         )
 
         # ----------------------------------------------------
-        # Agentic risk assessment
+        # ML MODEL
         # ----------------------------------------------------
 
-        risk, decision, probability = fraud_agent(
+        fraud_probability = model.predict_proba(
+            transaction
+        )[0][1]
+
+        # ----------------------------------------------------
+        # AGENT
+        # ----------------------------------------------------
+
+        prediction, risk_level, action = fraud_agent(
             fraud_probability
         )
 
+        # ====================================================
+        # OUTPUT
+        # ====================================================
+
         st.divider()
 
-        st.subheader("Fraud Detection Result")
+        st.subheader("FraudGuard AI Result")
 
         col1, col2, col3 = st.columns(3)
 
+        # ----------------------------------------------------
+        # FRAUD PROBABILITY
+        # ----------------------------------------------------
+
         with col1:
 
-            st.metric(
-                "Fraud Probability",
-                f"{probability:.2f}%"
+            st.markdown(
+                '<div class="result-card">',
+                unsafe_allow_html=True
             )
+
+            st.markdown(
+                '<div class="result-label">'
+                'FRAUD PROBABILITY'
+                '</div>',
+                unsafe_allow_html=True
+            )
+
+            st.markdown(
+                f'<div class="result-number">'
+                f'{fraud_probability * 100:.2f}%'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
+            st.markdown(
+                '</div>',
+                unsafe_allow_html=True
+            )
+
+        # ----------------------------------------------------
+        # PREDICTION
+        # ----------------------------------------------------
 
         with col2:
 
-            st.metric(
-                "Risk Level",
-                risk
+            st.markdown(
+                '<div class="result-card">',
+                unsafe_allow_html=True
             )
+
+            st.markdown(
+                '<div class="result-label">'
+                'ML PREDICTION'
+                '</div>',
+                unsafe_allow_html=True
+            )
+
+            prediction_text = (
+                "FRAUDULENT"
+                if prediction == 1
+                else "GENUINE"
+            )
+
+            st.markdown(
+                f'<div class="result-number">'
+                f'{prediction_text}'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
+            st.markdown(
+                '</div>',
+                unsafe_allow_html=True
+            )
+
+        # ----------------------------------------------------
+        # ACTION
+        # ----------------------------------------------------
 
         with col3:
 
-            st.metric(
-                "Agent Decision",
-                decision
+            st.markdown(
+                '<div class="result-card">',
+                unsafe_allow_html=True
             )
 
-        st.divider()
+            st.markdown(
+                '<div class="result-label">'
+                'AGENT DECISION'
+                '</div>',
+                unsafe_allow_html=True
+            )
+
+            st.markdown(
+                f'<div class="result-number">'
+                f'{action}'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
+            st.markdown(
+                '</div>',
+                unsafe_allow_html=True
+            )
 
         # ====================================================
-        # FINAL AGENT OUTPUT
+        # RISK
         # ====================================================
 
-        st.subheader("Agentic Risk Decision")
+        st.write("")
 
-        if decision == "BLOCK":
+        if risk_level == "HIGH":
 
             st.error(
-                "🚨 HIGH RISK — Transaction should be BLOCKED."
+                "🔴 HIGH RISK — Transaction should be BLOCKED."
             )
 
-        elif decision == "REVIEW":
+        elif risk_level == "MEDIUM":
 
             st.warning(
-                "⚠️ MEDIUM RISK — Transaction requires MANUAL REVIEW."
+                "🟠 MEDIUM RISK — Transaction requires REVIEW."
             )
 
         else:
 
             st.success(
-                "✅ LOW RISK — Transaction can be APPROVED."
+                "🟢 LOW RISK — Transaction can be APPROVED."
             )
 
+        # ====================================================
+        # SIMPLE AGENT OUTPUT
+        # ====================================================
+
+        st.write("")
+
+        st.subheader("Agentic Risk Decision")
+
         st.write(
-            f"**Fraud Probability:** {probability:.2f}%"
+            f"**Risk Level:** {risk_level}"
         )
 
         st.write(
-            f"**Risk Assessment:** {risk}"
-        )
-
-        st.write(
-            f"**Final Decision:** {decision}"
+            f"**Recommended Action:** {action}"
         )
 
     except Exception as e:
 
-        st.error(
-            "Prediction failed."
-        )
+        st.error("Fraud prediction failed.")
 
         st.exception(e)
 
@@ -444,7 +466,7 @@ if st.button("🔍 Detect Fraud"):
 st.divider()
 
 st.caption(
-    "FraudGuard AI • Credit Card Fraud Detection & Agentic Risk Decision System"
+    "FraudGuard AI • Credit Card Fraud Detection"
 )
 
 st.caption(
