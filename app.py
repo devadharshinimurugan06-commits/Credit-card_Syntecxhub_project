@@ -292,6 +292,10 @@ def load_agent():
         if MODEL_PATH is not None:
             os.chdir(MODEL_PATH.parent)
 
+        # make sure agent.py / tools.py / decision.py can be imported
+        if str(BASE_DIR) not in sys.path:
+            sys.path.insert(0, str(BASE_DIR))
+
         try:
 
             agent_module = importlib.import_module("agent")
@@ -427,6 +431,26 @@ def load_project_dataset(path_string):
 
 
 # ============================================================
+# VERIFIED SAMPLE TEST CASES
+# (transaction numbers are 1-based row numbers of the project CSV,
+#  25,492 rows. Verified against final_fraud_model.pkl.)
+# ============================================================
+
+SAMPLE_CASES = [
+    (2351,  "APPROVE", "Legitimate, very low risk (p ≈ 0.00)"),
+    (6195,  "APPROVE", "Legitimate, very low risk (p ≈ 0.00)"),
+    (202,   "REVIEW",  "Legitimate but flagged (p ≈ 0.43)"),
+    (20978, "REVIEW",  "Legitimate but flagged (p ≈ 0.59)"),
+    (7088,  "REVIEW",  "Actual fraud, medium risk (p ≈ 0.56)"),
+    (2437,  "REVIEW",  "Actual fraud, medium risk (p ≈ 0.69)"),
+    (14243, "BLOCK",   "Actual fraud, high risk (p ≈ 0.999)"),
+    (12105, "BLOCK",   "Actual fraud, high risk (p ≈ 0.999)"),
+    (1709,  "BLOCK",   "Actual fraud, high risk (p ≈ 0.999)"),
+    (9678,  "APPROVE", "Actual fraud MISSED by the model (p ≈ 0.0001)"),
+]
+
+
+# ============================================================
 # RESULT HELPERS
 # ============================================================
 
@@ -492,6 +516,22 @@ def normalize_action(value):
         return "Not Available"
 
     return str(value).strip().upper()
+
+
+def actual_class_label(row):
+    """Return Fraud / Legitimate from the Class column of a CSV row.
+    Row values are often floats (1.0), so convert safely."""
+
+    for col in row.index:
+
+        if str(col).lower() == "class":
+
+            try:
+                return "Fraud" if int(float(row[col])) == 1 else "Legitimate"
+            except Exception:
+                return "Not Available"
+
+    return "Not Available"
 
 
 # ============================================================
@@ -674,7 +714,7 @@ def display_prediction_result(result):
 
 
 # ============================================================
-# NEW: CSV ACTION CHECK
+# CSV ACTION CHECK
 # ============================================================
 
 def get_action_from_result(result):
@@ -694,11 +734,10 @@ def run_transaction_prediction(row):
 
     transaction_series = row.copy()
 
-    if "Class" in transaction_series.index:
-        transaction_series = transaction_series.drop("Class")
+    for col in list(transaction_series.index):
 
-    if "class" in transaction_series.index:
-        transaction_series = transaction_series.drop("class")
+        if str(col).lower() == "class":
+            transaction_series = transaction_series.drop(col)
 
     transaction = transaction_series.to_dict()
 
@@ -1008,8 +1047,11 @@ elif page == "🔍 Fraud Detection":
         unsafe_allow_html=True
     )
 
+    df = None
     transaction = None
     selected_index = None
+    selected_row = None
+    fraud_numbers = []
 
     if DATASET_PATH is None:
 
@@ -1036,20 +1078,105 @@ elif page == "🔍 Fraud Detection":
             )
 
             # ------------------------------------------------
-            # Transaction number only
+            # Find the real fraud rows (1-based transaction numbers)
+            # ------------------------------------------------
+
+            class_col = next(
+                (c for c in df.columns if str(c).lower() == "class"),
+                None
+            )
+
+            if class_col is not None:
+
+                fraud_numbers = (
+                    df.index[df[class_col] == 1] + 1
+                ).tolist()
+
+            # ------------------------------------------------
+            # Select transaction
             # ------------------------------------------------
 
             st.markdown("### 📂 Select Transaction")
 
-            selected_index = st.number_input(
-                "Transaction Number",
-                min_value=1,
-                max_value=len(df),
-                value=1,
-                step=1
-            ) - 1
+            pick_mode = st.radio(
+                "Choose transaction by",
+                [
+                    "Transaction number",
+                    "Sample test case",
+                    "Known fraud transaction"
+                ],
+                horizontal=True
+            )
+
+            if pick_mode == "Sample test case":
+
+                valid_cases = [
+                    case for case in SAMPLE_CASES
+                    if case[0] <= len(df)
+                ]
+
+                if valid_cases:
+
+                    case_lookup = {c[0]: c for c in valid_cases}
+
+                    chosen_number = st.selectbox(
+                        "Verified test cases (expected action shown)",
+                        list(case_lookup.keys()),
+                        format_func=lambda n: (
+                            f"#{n}  →  expected {case_lookup[n][1]}"
+                            f"  |  {case_lookup[n][2]}"
+                        )
+                    )
+
+                    selected_index = int(chosen_number) - 1
+
+                else:
+
+                    st.warning(
+                        "The sample test cases do not fit this CSV. "
+                        "Use 'Transaction number' instead."
+                    )
+
+                    selected_index = 0
+
+            elif pick_mode == "Known fraud transaction":
+
+                if fraud_numbers:
+
+                    chosen = st.selectbox(
+                        f"Fraud transactions in this CSV "
+                        f"({len(fraud_numbers)} found)",
+                        fraud_numbers
+                    )
+
+                    selected_index = int(chosen) - 1
+
+                else:
+
+                    st.warning(
+                        "This CSV contains no fraud rows (Class = 1), "
+                        "so BLOCK can never appear. Use a CSV that "
+                        "includes fraud transactions."
+                    )
+
+                    selected_index = 0
+
+            else:
+
+                selected_index = st.number_input(
+                    "Transaction Number",
+                    min_value=1,
+                    max_value=len(df),
+                    value=1,
+                    step=1
+                ) - 1
 
             selected_row = df.iloc[int(selected_index)]
+
+            st.caption(
+                f"Actual class of this transaction in the CSV: "
+                f"**{actual_class_label(selected_row)}**"
+            )
 
             st.markdown("### 👁️ Selected Transaction")
 
@@ -1063,17 +1190,10 @@ elif page == "🔍 Fraud Detection":
 
             transaction_series = selected_row.copy()
 
-            if "Class" in transaction_series.index:
+            for col in list(transaction_series.index):
 
-                transaction_series = transaction_series.drop(
-                    "Class"
-                )
-
-            if "class" in transaction_series.index:
-
-                transaction_series = transaction_series.drop(
-                    "class"
-                )
+                if str(col).lower() == "class":
+                    transaction_series = transaction_series.drop(col)
 
             transaction = transaction_series.to_dict()
 
@@ -1157,10 +1277,11 @@ elif page == "🔍 Fraud Detection":
 
     st.caption(
         "Test three transactions from the CSV and check whether "
-        "the agent recommends APPROVE, REVIEW or BLOCK."
+        "the agent recommends APPROVE, REVIEW or BLOCK. "
+        "Defaults: #2351 (legitimate), #14243 (fraud), #7088 (fraud, borderline)."
     )
 
-    if DATASET_PATH is not None and fraud_detection_agent is not None:
+    if df is not None and fraud_detection_agent is not None:
 
         c1, c2, c3 = st.columns(3)
 
@@ -1170,7 +1291,7 @@ elif page == "🔍 Fraud Detection":
                 "Transaction 1",
                 min_value=1,
                 max_value=len(df),
-                value=1,
+                value=min(2351, len(df)),
                 step=1,
                 key="csv_test_1"
             )
@@ -1181,7 +1302,11 @@ elif page == "🔍 Fraud Detection":
                 "Transaction 2",
                 min_value=1,
                 max_value=len(df),
-                value=min(2, len(df)),
+                value=min(
+                    14243 if len(df) >= 14243
+                    else (fraud_numbers[0] if fraud_numbers else 2),
+                    len(df)
+                ),
                 step=1,
                 key="csv_test_2"
             )
@@ -1192,7 +1317,11 @@ elif page == "🔍 Fraud Detection":
                 "Transaction 3",
                 min_value=1,
                 max_value=len(df),
-                value=min(3, len(df)),
+                value=min(
+                    7088 if len(df) >= 7088
+                    else (fraud_numbers[1] if len(fraud_numbers) > 1 else 3),
+                    len(df)
+                ),
                 step=1,
                 key="csv_test_3"
             )
@@ -1247,26 +1376,10 @@ elif page == "🔍 Fraud Detection":
 
                         action = get_action_from_result(result)
 
-                        actual_class = "Not Available"
-
-                        if "Class" in row.index:
-                            actual_class = (
-                                "Fraud"
-                                if str(row["Class"]).strip() == "1"
-                                else "Legitimate"
-                            )
-
-                        elif "class" in row.index:
-                            actual_class = (
-                                "Fraud"
-                                if str(row["class"]).strip() == "1"
-                                else "Legitimate"
-                            )
-
                         rows.append(
                             {
                                 "Transaction": int(number),
-                                "Actual Class": actual_class,
+                                "Actual Class": actual_class_label(row),
                                 "ML Prediction": prediction,
                                 "Fraud Probability": f"{probability * 100:.2f}%",
                                 "Risk Level": risk,
@@ -1347,6 +1460,21 @@ elif page == "🔍 Fraud Detection":
 
         st.warning(
             "Agent is not loaded, so CSV performance checking is unavailable."
+        )
+
+    # ========================================================
+    # VERIFIED TEST CASES TABLE
+    # ========================================================
+
+    with st.expander("🧪 Verified test transactions (expected results)"):
+
+        st.dataframe(
+            pd.DataFrame(
+                SAMPLE_CASES,
+                columns=["Transaction Number", "Expected Action", "Why"]
+            ),
+            width="stretch",
+            hide_index=True
         )
 
 
