@@ -1,9 +1,17 @@
+# ============================================================
+# FraudGuard AI
+# Credit Card Fraud Detection + Agentic AI
+# Complete Streamlit App
+# ============================================================
+
 import os
 import sys
 from pathlib import Path
+import importlib
 
-import streamlit as st
+import numpy as np
 import pandas as pd
+import streamlit as st
 
 
 # ============================================================
@@ -26,7 +34,198 @@ BASE_DIR = Path(__file__).resolve().parent
 
 
 # ============================================================
-# MODEL FILE SEARCH
+# CUSTOM CSS
+# ============================================================
+
+st.markdown(
+    """
+    <style>
+
+    /* ---------- GLOBAL ---------- */
+
+    .stApp {
+        background: #fff7fb;
+    }
+
+    .main .block-container {
+        padding-top: 2rem;
+        padding-bottom: 3rem;
+        max-width: 1400px;
+    }
+
+    h1, h2, h3, h4, p, label, span, div {
+        color: #202020;
+    }
+
+    /* ---------- SIDEBAR ---------- */
+
+    [data-testid="stSidebar"] {
+        background: #21151d;
+    }
+
+    [data-testid="stSidebar"] * {
+        color: white !important;
+    }
+
+    /* ---------- HEADINGS ---------- */
+
+    .main-title {
+        font-size: 38px;
+        font-weight: 900;
+        color: #171717;
+        margin-bottom: 4px;
+    }
+
+    .subtitle {
+        font-size: 17px;
+        color: #555555;
+        margin-bottom: 25px;
+    }
+
+    .section-title {
+        font-size: 27px;
+        font-weight: 850;
+        color: #171717;
+        margin-top: 10px;
+        margin-bottom: 8px;
+    }
+
+    .section-description {
+        font-size: 15px;
+        color: #555555;
+        margin-bottom: 20px;
+    }
+
+    /* ---------- CARDS ---------- */
+
+    .info-card {
+        background: white;
+        border: 1px solid #efd0df;
+        border-radius: 16px;
+        padding: 22px;
+        margin: 12px 0;
+        box-shadow: 0 5px 18px rgba(100, 30, 70, 0.06);
+    }
+
+    .info-card h3 {
+        margin-top: 0;
+        color: #8f1858;
+    }
+
+    .info-card p {
+        color: #444444;
+        line-height: 1.6;
+    }
+
+    .metric-card {
+        background: white;
+        border: 1px solid #efd0df;
+        border-radius: 16px;
+        padding: 20px;
+        text-align: center;
+        box-shadow: 0 5px 18px rgba(100, 30, 70, 0.06);
+    }
+
+    .metric-number {
+        font-size: 28px;
+        font-weight: 900;
+        color: #8f1858;
+    }
+
+    .metric-label {
+        font-size: 14px;
+        color: #555555;
+        margin-top: 4px;
+    }
+
+    /* ---------- BUTTON ---------- */
+
+    .stButton > button {
+        width: 100%;
+        border-radius: 12px;
+        border: none;
+        padding: 12px 20px;
+        background: linear-gradient(90deg, #c81769, #8d28bd);
+        color: white !important;
+        font-weight: 800;
+        font-size: 16px;
+        box-shadow: 0 8px 18px rgba(150, 30, 110, 0.20);
+    }
+
+    .stButton > button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 22px rgba(150, 30, 110, 0.28);
+    }
+
+    /* ---------- INPUTS ---------- */
+
+    div[data-baseweb="select"] > div {
+        border-radius: 10px;
+    }
+
+    div[data-testid="stNumberInput"] input {
+        border-radius: 10px;
+    }
+
+    /* ---------- RESULT ---------- */
+
+    .result-card {
+        background: white;
+        border: 2px solid #e6bfd2;
+        border-radius: 18px;
+        padding: 24px;
+        margin-top: 20px;
+        box-shadow: 0 8px 25px rgba(100, 30, 70, 0.08);
+    }
+
+    .result-title {
+        font-size: 22px;
+        font-weight: 850;
+        color: #8f1858;
+        margin-bottom: 15px;
+    }
+
+    .risk-high {
+        background: #ffe5e5;
+        border-left: 5px solid #d71920;
+        padding: 14px;
+        border-radius: 10px;
+        font-weight: 800;
+    }
+
+    .risk-medium {
+        background: #fff1d6;
+        border-left: 5px solid #e28b00;
+        padding: 14px;
+        border-radius: 10px;
+        font-weight: 800;
+    }
+
+    .risk-low {
+        background: #e3f7e9;
+        border-left: 5px solid #238636;
+        padding: 14px;
+        border-radius: 10px;
+        font-weight: 800;
+    }
+
+    /* ---------- FOOTER ---------- */
+
+    .footer {
+        text-align: center;
+        padding: 30px 0 10px 0;
+        color: #666666 !important;
+        font-size: 13px;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# MODEL / AGENT DISCOVERY
 # ============================================================
 
 MODEL_CANDIDATES = [
@@ -38,119 +237,121 @@ MODEL_CANDIDATES = [
 
 
 def find_model_file():
+    """
+    Find the fraud model inside the project folder.
+    """
 
-    # --------------------------------------------------------
-    # 1. Check project root
-    # --------------------------------------------------------
-
+    # First check exact expected filenames
     for filename in MODEL_CANDIDATES:
-
         path = BASE_DIR / filename
 
         if path.exists():
             return path
 
-
-    # --------------------------------------------------------
-    # 2. Check common model folders
-    # --------------------------------------------------------
-
-    common_folders = [
-        "models",
-        "model",
-        "artifacts",
-        "saved_models"
-    ]
-
-    for folder in common_folders:
+    # Check common folders
+    for folder in ["models", "model", "artifacts", "saved_models"]:
 
         folder_path = BASE_DIR / folder
 
-        if folder_path.exists():
+        if not folder_path.exists():
+            continue
 
-            for filename in MODEL_CANDIDATES:
+        for filename in MODEL_CANDIDATES:
 
-                path = folder_path / filename
+            path = folder_path / filename
 
-                if path.exists():
-                    return path
+            if path.exists():
+                return path
 
+    # Last fallback: search recursively
+    for path in BASE_DIR.rglob("*.pkl"):
 
-    # --------------------------------------------------------
-    # 3. Recursive search
-    # --------------------------------------------------------
+        name = path.name.lower()
 
-    for filename in MODEL_CANDIDATES:
-
-        matches = list(BASE_DIR.rglob(filename))
-
-        if matches:
-            return matches[0]
-
-
-    # --------------------------------------------------------
-    # 4. Any PKL file as fallback
-    # --------------------------------------------------------
-
-    pkl_files = list(BASE_DIR.rglob("*.pkl"))
-
-    if pkl_files:
-        return pkl_files[0]
-
+        if (
+            "fraud" in name
+            or "xgb" in name
+            or "model" in name
+        ):
+            return path
 
     return None
+
+
+MODEL_PATH = find_model_file()
 
 
 # ============================================================
 # LOAD AGENT
 # ============================================================
 
-@st.cache_resource
+fraud_detection_agent = None
+agent_import_error = None
+
+
 def load_agent():
 
-    model_path = find_model_file()
+    global fraud_detection_agent
+    global agent_import_error
 
-    if model_path is None:
+    if fraud_detection_agent is not None:
+        return fraud_detection_agent
 
-        raise FileNotFoundError(
-            "No trained model (.pkl) was found in the project repository."
-        )
-
-
-    # --------------------------------------------------------
-    # tools.py loads:
+    # The current tools.py uses:
     #
     # joblib.load("final_fraud_model.pkl")
     #
     # Therefore temporarily change working directory
-    # to the folder containing the model.
-    # --------------------------------------------------------
+    # to the model directory while importing the agent.
 
     original_cwd = os.getcwd()
 
     try:
 
-        os.chdir(str(model_path.parent))
+        if MODEL_PATH is not None:
+            os.chdir(MODEL_PATH.parent)
 
-        if str(BASE_DIR) not in sys.path:
-            sys.path.insert(0, str(BASE_DIR))
-
+        # Try agent.py first
         try:
 
-            from agent import fraud_detection_agent
+            agent_module = importlib.import_module("agent")
 
-        except ImportError:
+            fraud_detection_agent = getattr(
+                agent_module,
+                "fraud_detection_agent"
+            )
 
-            from agents import fraud_detection_agent
+        except Exception as first_error:
 
-        return fraud_detection_agent, model_path
+            # Try agents.py if project uses plural filename
+            try:
+
+                agents_module = importlib.import_module("agents")
+
+                fraud_detection_agent = getattr(
+                    agents_module,
+                    "fraud_detection_agent"
+                )
+
+            except Exception as second_error:
+
+                agent_import_error = (
+                    f"agent.py error: {first_error}\n\n"
+                    f"agents.py error: {second_error}"
+                )
+
+    except Exception as e:
+
+        agent_import_error = str(e)
 
     finally:
 
         os.chdir(original_cwd)
 
+    return fraud_detection_agent
 
-fraud_detection_agent, MODEL_PATH = load_agent()
+
+load_agent()
 
 
 # ============================================================
@@ -164,21 +365,33 @@ DEFAULT_FEATURE_COLUMNS = (
 )
 
 
-try:
+def get_feature_columns():
 
-    import tools
+    try:
 
-    if hasattr(tools, "FEATURE_COLUMNS"):
+        tools_module = importlib.import_module("tools")
 
-        DEFAULT_FEATURE_COLUMNS = tools.FEATURE_COLUMNS
+        columns = getattr(
+            tools_module,
+            "FEATURE_COLUMNS",
+            None
+        )
 
-except Exception:
+        if columns is not None:
 
-    pass
+            return list(columns)
+
+    except Exception:
+        pass
+
+    return DEFAULT_FEATURE_COLUMNS
+
+
+FEATURE_COLUMNS = get_feature_columns()
 
 
 # ============================================================
-# DATASET SEARCH
+# DATASET DISCOVERY
 # ============================================================
 
 DATASET_CANDIDATES = [
@@ -190,12 +403,9 @@ DATASET_CANDIDATES = [
 ]
 
 
-def find_dataset_file():
+def find_dataset():
 
-    # --------------------------------------------------------
-    # 1. Root
-    # --------------------------------------------------------
-
+    # Root folder
     for filename in DATASET_CANDIDATES:
 
         path = BASE_DIR / filename
@@ -203,65 +413,43 @@ def find_dataset_file():
         if path.exists():
             return path
 
-
-    # --------------------------------------------------------
-    # 2. Common folders
-    # --------------------------------------------------------
-
-    common_folders = [
-        "data",
-        "dataset",
-        "datasets",
-        "files"
-    ]
-
-    for folder in common_folders:
+    # Common folders
+    for folder in ["data", "dataset", "datasets"]:
 
         folder_path = BASE_DIR / folder
 
-        if folder_path.exists():
+        if not folder_path.exists():
+            continue
 
-            for filename in DATASET_CANDIDATES:
+        for filename in DATASET_CANDIDATES:
 
-                path = folder_path / filename
+            path = folder_path / filename
 
-                if path.exists():
-                    return path
+            if path.exists():
+                return path
 
+    # Recursive search
+    for path in BASE_DIR.rglob("*.csv"):
 
-    # --------------------------------------------------------
-    # 3. Recursive search
-    # --------------------------------------------------------
+        name = path.name.lower()
 
-    for filename in DATASET_CANDIDATES:
-
-        matches = list(BASE_DIR.rglob(filename))
-
-        if matches:
-            return matches[0]
-
+        if (
+            "creditcard" in name
+            or "credit_card" in name
+            or "fraud" in name
+        ):
+            return path
 
     return None
 
 
-# ============================================================
-# LOAD PROJECT DATASET
-# ============================================================
+DATASET_PATH = find_dataset()
+
 
 @st.cache_data
-def load_project_dataset():
+def load_project_dataset(path_string):
 
-    dataset_path = find_dataset_file()
-
-    if dataset_path is None:
-
-        raise FileNotFoundError(
-            "Project transaction dataset was not found."
-        )
-
-    df = pd.read_csv(dataset_path)
-
-    return df, dataset_path
+    return pd.read_csv(path_string)
 
 
 # ============================================================
@@ -272,148 +460,241 @@ def normalize_probability(value):
 
     try:
 
-        value = float(value)
+        probability = float(value)
 
     except Exception:
 
         return 0.0
 
+    # If model/agent gives percentage such as 94.5
+    if probability > 1:
 
-    # If model returns percentage such as 87.5
-    if value > 1:
+        probability = probability / 100
 
-        value = value / 100.0
+    probability = max(
+        0.0,
+        min(1.0, probability)
+    )
+
+    return probability
 
 
-    return min(max(value, 0.0), 1.0)
+def get_result_value(result, *keys, default=None):
+
+    if not isinstance(result, dict):
+        return default
+
+    for key in keys:
+
+        if key in result:
+            return result[key]
+
+    return default
 
 
 def normalize_prediction(value):
 
-    try:
+    if value is None:
+        return "Unknown"
 
-        if isinstance(value, str):
+    text = str(value).strip()
 
-            value_upper = value.upper()
+    if text.lower() in ["1", "fraud", "true", "yes"]:
+        return "Fraud"
 
-            if "FRAUD" in value_upper:
-                return 1
+    if text.lower() in ["0", "legitimate", "genuine", "false", "no"]:
+        return "Legitimate"
 
-            if "GENUINE" in value_upper:
-                return 0
-
-            if "LEGIT" in value_upper:
-                return 0
-
-        return int(value)
-
-    except Exception:
-
-        return 0
+    return text
 
 
 def normalize_risk(value):
 
     if value is None:
-        return "UNKNOWN"
+        return "Unknown"
 
-    return str(value).upper().strip()
+    return str(value).strip().upper()
 
 
 def normalize_action(value):
 
     if value is None:
-        return "UNKNOWN"
+        return "Not Available"
 
-    return str(value).upper().strip()
+    return str(value).strip().upper()
 
 
 # ============================================================
-# DYNAMIC AGENT ANALYSIS
+# DISPLAY RESULT
 # ============================================================
 
-def display_agent_analysis(
-    fraud_probability,
-    prediction,
-    risk_level,
-    action
-):
+def display_prediction_result(result):
 
-    probability_percent = fraud_probability * 100
+    if result is None:
 
-    risk = normalize_risk(risk_level)
-    action = normalize_action(action)
+        st.error(
+            "The fraud detection agent did not return a result."
+        )
 
-    prediction_text = (
-        "FRAUDULENT"
-        if prediction == 1
-        else "GENUINE"
+        return
+
+    probability = normalize_probability(
+        get_result_value(
+            result,
+            "fraud_probability",
+            "probability",
+            "fraud_prob",
+            default=0
+        )
     )
 
+    prediction = normalize_prediction(
+        get_result_value(
+            result,
+            "prediction",
+            "predicted_class",
+            "class",
+            "fraud_prediction"
+        )
+    )
 
-    # --------------------------------------------------------
-    # Agent Analysis
-    # --------------------------------------------------------
+    risk = normalize_risk(
+        get_result_value(
+            result,
+            "risk_level",
+            "risk",
+            default="UNKNOWN"
+        )
+    )
 
-    st.markdown("### 🤖 Agent Analysis")
+    action = normalize_action(
+        get_result_value(
+            result,
+            "recommended_action",
+            "action",
+            "decision",
+            default="Not Available"
+        )
+    )
 
+    st.markdown(
+        "### 🛡️ FraudGuard AI Result"
+    )
 
-    if risk == "HIGH":
+    r1, r2, r3, r4 = st.columns(4)
 
-        agent_analysis = (
-            f"The model assigned a fraud probability of "
-            f"**{probability_percent:.2f}%**. "
-            f"This exceeds the **70% high-risk threshold**. "
-            f"The agent therefore classifies this transaction as "
-            f"**HIGH risk** and recommends **{action}**."
+    with r1:
+
+        st.metric(
+            "Fraud Probability",
+            f"{probability * 100:.2f}%"
         )
 
+    with r2:
 
-    elif risk == "MEDIUM":
-
-        agent_analysis = (
-            f"The model assigned a fraud probability of "
-            f"**{probability_percent:.2f}%**. "
-            f"This falls within the **30% to below 70% "
-            f"risk range**. "
-            f"The agent therefore classifies this transaction as "
-            f"**MEDIUM risk** and recommends **{action}**."
+        st.metric(
+            "ML Prediction",
+            prediction
         )
 
+    with r3:
 
-    elif risk == "LOW":
-
-        agent_analysis = (
-            f"The model assigned a fraud probability of "
-            f"**{probability_percent:.2f}%**. "
-            f"This is below the **30% low-risk threshold**. "
-            f"The agent therefore classifies this transaction as "
-            f"**LOW risk** and recommends **{action}**."
+        st.metric(
+            "Risk Level",
+            risk
         )
 
+    with r4:
+
+        st.metric(
+            "Recommended Action",
+            action
+        )
+
+    # Progress
+    st.progress(
+        probability,
+        text=f"Fraud probability: {probability * 100:.2f}%"
+    )
+
+    # Risk message
+    if "HIGH" in risk:
+
+        st.error(
+            f"🔴 HIGH RISK — Recommended action: {action}"
+        )
+
+    elif "MEDIUM" in risk:
+
+        st.warning(
+            f"🟠 MEDIUM RISK — Recommended action: {action}"
+        )
+
+    elif "LOW" in risk:
+
+        st.success(
+            f"🟢 LOW RISK — Recommended action: {action}"
+        )
 
     else:
 
-        agent_analysis = (
-            f"The model returned a fraud probability of "
-            f"**{probability_percent:.2f}%**. "
-            f"The agent returned a risk level of "
-            f"**{risk}** and recommends **{action}**."
+        st.info(
+            f"Risk: {risk} | Recommended action: {action}"
         )
 
 
-    st.info(agent_analysis)
+    # ========================================================
+    # AGENT ANALYSIS
+    # ========================================================
+
+    st.markdown("### 🤖 Agent Analysis")
+
+    probability_percent = probability * 100
+
+    if "HIGH" in risk:
+
+        st.info(
+            f"The agent returned a fraud probability of "
+            f"**{probability_percent:.2f}%**, with an ML prediction of "
+            f"**{prediction}**. The agent assessed the transaction as "
+            f"**{risk} risk** and recommended **{action}**."
+        )
+
+    elif "MEDIUM" in risk:
+
+        st.info(
+            f"The agent returned a fraud probability of "
+            f"**{probability_percent:.2f}%**, with an ML prediction of "
+            f"**{prediction}**. The agent assessed the transaction as "
+            f"**{risk} risk** and recommended **{action}**."
+        )
+
+    elif "LOW" in risk:
+
+        st.info(
+            f"The agent returned a fraud probability of "
+            f"**{probability_percent:.2f}%**, with an ML prediction of "
+            f"**{prediction}**. The agent assessed the transaction as "
+            f"**{risk} risk** and recommended **{action}**."
+        )
+
+    else:
+
+        st.info(
+            f"The agent returned a fraud probability of "
+            f"**{probability_percent:.2f}%**, with an ML prediction of "
+            f"**{prediction}**. The agent assessed the transaction as "
+            f"**{risk} risk** and recommended **{action}**."
+        )
 
 
-    # --------------------------------------------------------
-    # Agent Decision Path
-    # --------------------------------------------------------
+    # ========================================================
+    # AGENT DECISION PATH
+    # ========================================================
 
     st.markdown("### 🔄 Agent Decision Path")
 
-
     d1, d2, d3, d4 = st.columns(4)
-
 
     with d1:
 
@@ -422,7 +703,6 @@ def display_agent_analysis(
             f"{probability_percent:.2f}%"
         )
 
-
     with d2:
 
         st.metric(
@@ -430,14 +710,12 @@ def display_agent_analysis(
             risk
         )
 
-
     with d3:
 
         st.metric(
             "ML Prediction",
-            prediction_text
+            prediction
         )
-
 
     with d4:
 
@@ -447,949 +725,28 @@ def display_agent_analysis(
         )
 
 
-# ============================================================
-# DISPLAY PREDICTION RESULT
-# ============================================================
-
-def display_prediction_result(result):
-
-    # --------------------------------------------------------
-    # Extract actual agent result
-    # --------------------------------------------------------
-
-    probability = normalize_probability(
-        result.get("fraud_probability", 0)
-    )
-
-    prediction = normalize_prediction(
-        result.get("prediction", 0)
-    )
-
-    risk = normalize_risk(
-        result.get("risk_level", "UNKNOWN")
-    )
-
-    action = normalize_action(
-        result.get("recommended_action", "UNKNOWN")
-    )
-
-
-    probability_percent = probability * 100
-
-
-    prediction_text = (
-        "FRAUDULENT"
-        if prediction == 1
-        else "GENUINE"
-    )
-
-
     # ========================================================
-    # RESULT HEADER
+    # ORIGINAL AGENT OUTPUT
     # ========================================================
 
-    st.markdown(
-        """
-        <div class="result-box">
+    with st.expander("🤖 View Agent Execution Details"):
 
-            <div class="result-title">
-                ✅ FraudGuard AI Result
-            </div>
+        if isinstance(result, dict):
 
-            <p>
-                The transaction has been processed through the
-                complete agentic workflow.
-            </p>
+            clean_result = {}
 
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+            for key, value in result.items():
 
+                if isinstance(value, (np.integer, np.floating)):
+                    value = value.item()
 
-    st.write("")
+                clean_result[key] = value
 
+            st.json(clean_result)
 
-    # ========================================================
-    # MAIN RESULT METRICS
-    # ========================================================
+        else:
 
-    r1, r2, r3, r4 = st.columns(4)
-
-
-    with r1:
-
-        st.markdown(
-            f"""
-            <div class="metric-card">
-
-                <div class="metric-label">
-                    FRAUD PROBABILITY
-                </div>
-
-                <div class="metric-number">
-                    {probability_percent:.2f}%
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-    with r2:
-
-        st.markdown(
-            f"""
-            <div class="metric-card">
-
-                <div class="metric-label">
-                    ML PREDICTION
-                </div>
-
-                <div class="metric-number">
-                    {prediction_text}
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-    with r3:
-
-        st.markdown(
-            f"""
-            <div class="metric-card">
-
-                <div class="metric-label">
-                    RISK LEVEL
-                </div>
-
-                <div class="metric-number">
-                    {risk}
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-    with r4:
-
-        st.markdown(
-            f"""
-            <div class="metric-card">
-
-                <div class="metric-label">
-                    RECOMMENDED ACTION
-                </div>
-
-                <div class="metric-number">
-                    {action}
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-    st.write("")
-
-
-    # ========================================================
-    # RISK DISPLAY
-    # ========================================================
-
-    if risk == "HIGH":
-
-        st.markdown(
-            f"""
-            <div class="risk-high">
-
-                <div class="risk-label">
-                    RISK LEVEL
-                </div>
-
-                <div class="risk-value">
-                    🔴 HIGH
-                </div>
-
-                <p>
-                    High probability of fraudulent activity.
-                    Recommended action:
-                    <b>{action}</b>.
-                </p>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-    elif risk == "MEDIUM":
-
-        st.markdown(
-            f"""
-            <div class="risk-medium">
-
-                <div class="risk-label">
-                    RISK LEVEL
-                </div>
-
-                <div class="risk-value">
-                    🟠 MEDIUM
-                </div>
-
-                <p>
-                    Transaction requires additional verification.
-                    Recommended action:
-                    <b>{action}</b>.
-                </p>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-    elif risk == "LOW":
-
-        st.markdown(
-            f"""
-            <div class="risk-low">
-
-                <div class="risk-label">
-                    RISK LEVEL
-                </div>
-
-                <div class="risk-value">
-                    🟢 LOW
-                </div>
-
-                <p>
-                    Transaction has low fraud risk.
-                    Recommended action:
-                    <b>{action}</b>.
-                </p>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-    else:
-
-        st.info(
-            f"Risk Level: {risk} | Recommended Action: {action}"
-        )
-
-
-    st.write("")
-
-
-    # ========================================================
-    # FRAUD PROBABILITY BAR
-    # ========================================================
-
-    st.progress(
-        probability,
-        text=f"Fraud Probability: {probability_percent:.2f}%"
-    )
-
-
-    st.write("")
-
-
-    # ========================================================
-    # DYNAMIC AGENT ANALYSIS
-    # ========================================================
-
-    display_agent_analysis(
-        probability,
-        prediction,
-        risk,
-        action
-    )
-
-
-    st.write("")
-
-
-    # ========================================================
-    # AGENT EXECUTION
-    # ========================================================
-
-    st.markdown(
-        '<div class="section-title">🤖 Agent Execution</div>',
-        unsafe_allow_html=True
-    )
-
-
-    a1, a2, a3 = st.columns(3)
-
-
-    with a1:
-
-        st.markdown(
-            """
-            <div class="info-card">
-
-                <h3>🧠 Tool 1 — Prediction</h3>
-
-                <p>
-                    The trained XGBoost model analyzes the
-                    transaction features and produces the
-                    fraud probability.
-                </p>
-
-                <strong>
-                    Output: Fraud Probability + Prediction
-                </strong>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-    with a2:
-
-        st.markdown(
-            """
-            <div class="info-card">
-
-                <h3>🎯 Tool 2 — Risk Assessment</h3>
-
-                <p>
-                    The agent interprets the actual fraud
-                    probability and converts it into
-                    LOW, MEDIUM or HIGH risk.
-                </p>
-
-                <strong>
-                    Output: Risk Level
-                </strong>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-    with a3:
-
-        st.markdown(
-            """
-            <div class="info-card">
-
-                <h3>🚦 Tool 3 — Decision</h3>
-
-                <p>
-                    The agent maps the actual risk level
-                    to an operational recommendation.
-                </p>
-
-                <strong>
-                    Output: APPROVE / REVIEW / BLOCK
-                </strong>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-    # --------------------------------------------------------
-    # Raw agent result
-    # --------------------------------------------------------
-
-    with st.expander("🔎 View Agent Output"):
-
-        st.json(result)
-
-
-# ============================================================
-# CUSTOM CSS
-# ============================================================
-
-st.markdown(
-    """
-    <style>
-
-    /* =======================================================
-       GLOBAL
-       ======================================================= */
-
-    .stApp {
-
-        background:
-            linear-gradient(
-                135deg,
-                #fff7fb 0%,
-                #ffeaf4 50%,
-                #f8efff 100%
-            );
-    }
-
-
-    html,
-    body,
-    [class*="css"] {
-
-        color: #171717 !important;
-    }
-
-
-    .main .block-container {
-
-        padding-top: 2rem;
-        padding-bottom: 3rem;
-        max-width: 1250px;
-    }
-
-
-    p,
-    li,
-    label,
-    span,
-    div {
-
-        color: #202020;
-    }
-
-
-    h1,
-    h2,
-    h3,
-    h4 {
-
-        color: #171717 !important;
-        font-weight: 800 !important;
-    }
-
-
-    /* =======================================================
-       SIDEBAR
-       ======================================================= */
-
-    section[data-testid="stSidebar"] {
-
-        background:
-            linear-gradient(
-                180deg,
-                #fffafd 0%,
-                #ffeef7 100%
-            );
-
-        border-right: 1px solid #f3c6da;
-    }
-
-
-    section[data-testid="stSidebar"] h1,
-    section[data-testid="stSidebar"] h2,
-    section[data-testid="stSidebar"] h3,
-    section[data-testid="stSidebar"] p,
-    section[data-testid="stSidebar"] label {
-
-        color: #222222 !important;
-    }
-
-
-    .sidebar-title {
-
-        font-size: 25px;
-        font-weight: 800;
-        color: #9d175b;
-        margin-bottom: 3px;
-    }
-
-
-    .sidebar-subtitle {
-
-        font-size: 13px;
-        color: #555555;
-        margin-bottom: 25px;
-    }
-
-
-    /* =======================================================
-       CREDIT CARD
-       ======================================================= */
-
-    .credit-card {
-
-        width: 100%;
-        height: 185px;
-        border-radius: 22px;
-        padding: 24px;
-        margin-bottom: 25px;
-
-        background:
-            linear-gradient(
-                135deg,
-                #8e155c 0%,
-                #d71973 48%,
-                #8b2bc3 100%
-            );
-
-        box-shadow:
-            0 15px 35px rgba(155, 20, 95, 0.25);
-
-        position: relative;
-        overflow: hidden;
-    }
-
-
-    .credit-card::before {
-
-        content: "";
-        position: absolute;
-        width: 170px;
-        height: 170px;
-        border-radius: 50%;
-        background: rgba(255,255,255,0.08);
-        right: -60px;
-        top: -70px;
-    }
-
-
-    .credit-card::after {
-
-        content: "";
-        position: absolute;
-        width: 130px;
-        height: 130px;
-        border-radius: 50%;
-        background: rgba(255,255,255,0.06);
-        left: -60px;
-        bottom: -70px;
-    }
-
-
-    .card-top {
-
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        position: relative;
-        z-index: 2;
-    }
-
-
-    .card-brand {
-
-        color: white !important;
-        font-size: 21px;
-        font-weight: 800;
-        letter-spacing: 0.5px;
-    }
-
-
-    .card-chip {
-
-        width: 42px;
-        height: 30px;
-        border-radius: 7px;
-
-        background:
-            linear-gradient(
-                135deg,
-                #ffe7a8,
-                #dcae53
-            );
-
-        border: 1px solid rgba(255,255,255,0.4);
-    }
-
-
-    .card-number {
-
-        color: white !important;
-        font-size: 19px;
-        letter-spacing: 3px;
-        margin-top: 30px;
-        position: relative;
-        z-index: 2;
-    }
-
-
-    .card-bottom {
-
-        display: flex;
-        justify-content: space-between;
-        margin-top: 17px;
-        position: relative;
-        z-index: 2;
-    }
-
-
-    .card-label {
-
-        color: rgba(255,255,255,0.72) !important;
-        font-size: 9px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-    }
-
-
-    .card-value {
-
-        color: white !important;
-        font-size: 12px;
-        font-weight: 700;
-    }
-
-
-    /* =======================================================
-       HERO
-       ======================================================= */
-
-    .hero {
-
-        background:
-            linear-gradient(
-                135deg,
-                #c81769,
-                #9c1c8f,
-                #7024b7
-            );
-
-        border-radius: 26px;
-        padding: 38px 42px;
-        margin-bottom: 30px;
-
-        box-shadow:
-            0 18px 40px rgba(139, 30, 130, 0.22);
-    }
-
-
-    .hero h1 {
-
-        color: white !important;
-        font-size: 42px;
-        margin-bottom: 8px;
-    }
-
-
-    .hero p {
-
-        color: rgba(255,255,255,0.94) !important;
-        font-size: 17px;
-        line-height: 1.6;
-        margin-bottom: 0;
-    }
-
-
-    /* =======================================================
-       SECTION
-       ======================================================= */
-
-    .section-title {
-
-        font-size: 30px;
-        color: #8f1858 !important;
-        margin-top: 15px;
-        margin-bottom: 8px;
-    }
-
-
-    .section-text {
-
-        color: #3f3f3f !important;
-        font-size: 16px;
-        line-height: 1.7;
-    }
-
-
-    /* =======================================================
-       WHITE CARDS
-       ======================================================= */
-
-    .info-card {
-
-        background: rgba(255,255,255,0.94);
-        border: 1px solid #f1c9dc;
-        border-radius: 20px;
-        padding: 25px;
-        height: 100%;
-
-        box-shadow:
-            0 10px 25px rgba(150, 50, 100, 0.08);
-    }
-
-
-    .info-card h3 {
-
-        color: #8e1858 !important;
-        font-size: 20px;
-        margin-bottom: 10px;
-    }
-
-
-    .info-card p {
-
-        color: #3b3b3b !important;
-        line-height: 1.65;
-    }
-
-
-    .info-card strong {
-
-        color: #171717 !important;
-    }
-
-
-    /* =======================================================
-       WORKFLOW
-       ======================================================= */
-
-    .workflow-box {
-
-        background: white;
-        border: 1px solid #efc6da;
-        border-radius: 20px;
-        padding: 25px;
-        text-align: center;
-        min-height: 165px;
-
-        box-shadow:
-            0 10px 25px rgba(120,30,90,0.08);
-    }
-
-
-    .workflow-icon {
-
-        font-size: 35px;
-        margin-bottom: 8px;
-    }
-
-
-    .workflow-title {
-
-        font-size: 18px;
-        font-weight: 800;
-        color: #222222 !important;
-    }
-
-
-    .workflow-text {
-
-        font-size: 14px;
-        color: #555555 !important;
-        line-height: 1.5;
-    }
-
-
-    /* =======================================================
-       METRIC CARDS
-       ======================================================= */
-
-    .metric-card {
-
-        background: white;
-        border-radius: 18px;
-        padding: 20px;
-        text-align: center;
-        border: 1px solid #efc9dc;
-
-        box-shadow:
-            0 8px 20px rgba(120,30,90,0.07);
-    }
-
-
-    .metric-number {
-
-        font-size: 28px;
-        font-weight: 800;
-        color: #b31368 !important;
-    }
-
-
-    .metric-label {
-
-        font-size: 13px;
-        color: #555555 !important;
-        margin-top: 4px;
-    }
-
-
-    /* =======================================================
-       INPUT AREA
-       ======================================================= */
-
-    .input-box {
-
-        background: white;
-        border: 1px solid #efc6da;
-        border-radius: 20px;
-        padding: 25px;
-
-        box-shadow:
-            0 10px 25px rgba(120,30,90,0.07);
-
-        margin-bottom: 20px;
-    }
-
-
-    .input-title {
-
-        color: #8f1858 !important;
-        font-size: 22px;
-        font-weight: 800;
-        margin-bottom: 6px;
-    }
-
-
-    .input-description {
-
-        color: #555555 !important;
-        font-size: 14px;
-        margin-bottom: 18px;
-    }
-
-
-    /* =======================================================
-       RESULT BOX
-       ======================================================= */
-
-    .result-box {
-
-        background: white;
-        border-radius: 22px;
-        border: 2px solid #e6c5d8;
-        padding: 28px;
-        margin-top: 20px;
-
-        box-shadow:
-            0 12px 30px rgba(120,30,90,0.10);
-    }
-
-
-    .result-title {
-
-        color: #8f1858 !important;
-        font-size: 25px;
-        font-weight: 800;
-    }
-
-
-    /* =======================================================
-       RISK BOXES
-       ======================================================= */
-
-    .risk-high {
-
-        background: #fff0f0;
-        border: 2px solid #e14a4a;
-        border-radius: 16px;
-        padding: 18px;
-        text-align: center;
-    }
-
-
-    .risk-medium {
-
-        background: #fff8e8;
-        border: 2px solid #e5a927;
-        border-radius: 16px;
-        padding: 18px;
-        text-align: center;
-    }
-
-
-    .risk-low {
-
-        background: #effaf2;
-        border: 2px solid #46a866;
-        border-radius: 16px;
-        padding: 18px;
-        text-align: center;
-    }
-
-
-    .risk-label {
-
-        font-size: 13px;
-        color: #444444 !important;
-    }
-
-
-    .risk-value {
-
-        font-size: 28px;
-        font-weight: 900;
-        color: #171717 !important;
-    }
-
-
-    /* =======================================================
-       BUTTON
-       ======================================================= */
-
-    .stButton > button {
-
-        width: 100%;
-        border-radius: 12px;
-        border: none;
-        padding: 12px 20px;
-
-        background:
-            linear-gradient(
-                90deg,
-                #c81769,
-                #8d28bd
-            );
-
-        color: white !important;
-        font-weight: 800;
-        font-size: 16px;
-
-        box-shadow:
-            0 8px 18px rgba(150,30,110,0.20);
-    }
-
-
-    .stButton > button:hover {
-
-        transform: translateY(-1px);
-
-        box-shadow:
-            0 10px 22px rgba(150,30,110,0.28);
-    }
-
-
-    /* =======================================================
-       EXPANDER
-       ======================================================= */
-
-    .streamlit-expanderHeader {
-
-        color: #222222 !important;
-        font-weight: 700 !important;
-    }
-
-
-    /* =======================================================
-       FOOTER
-       ======================================================= */
-
-    .footer {
-
-        text-align: center;
-        padding: 30px 0 10px 0;
-        color: #555555 !important;
-        font-size: 13px;
-    }
-
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+            st.write(result)
 
 
 # ============================================================
@@ -1400,70 +757,38 @@ with st.sidebar:
 
     st.markdown(
         """
-        <div class="credit-card">
+        <div style="
+            background:linear-gradient(135deg,#7d174f,#a82b75);
+            padding:22px;
+            border-radius:18px;
+            margin-bottom:20px;
+        ">
 
-            <div class="card-top">
+        <div style="
+            font-size:25px;
+            font-weight:900;
+            color:white;
+        ">
+        🛡️ FraudGuard AI
+        </div>
 
-                <div class="card-brand">
-                    FraudGuard AI
-                </div>
-
-                <div class="card-chip"></div>
-
-            </div>
-
-            <div class="card-number">
-                ••••  ••••  ••••  2026
-            </div>
-
-            <div class="card-bottom">
-
-                <div>
-
-                    <div class="card-label">
-                        SYSTEM
-                    </div>
-
-                    <div class="card-value">
-                        FRAUD DETECTION
-                    </div>
-
-                </div>
-
-                <div>
-
-                    <div class="card-label">
-                        AI
-                    </div>
-
-                    <div class="card-value">
-                        ACTIVE
-                    </div>
-
-                </div>
-
-            </div>
+        <div style="
+            font-size:13px;
+            color:#ffe8f4;
+            margin-top:5px;
+        ">
+        Intelligent Credit Card Fraud Detection
+        </div>
 
         </div>
         """,
         unsafe_allow_html=True
     )
 
-
-    st.markdown(
-        '<div class="sidebar-title">Navigation</div>',
-        unsafe_allow_html=True
-    )
-
-
-    st.markdown(
-        '<div class="sidebar-subtitle">FraudGuard AI Control Panel</div>',
-        unsafe_allow_html=True
-    )
-
+    st.markdown("### Navigation")
 
     page = st.radio(
-        "Go to",
+        "Navigate",
         [
             "🏠 Dashboard",
             "🔍 Fraud Detection",
@@ -1473,71 +798,29 @@ with st.sidebar:
         label_visibility="collapsed"
     )
 
-
     st.markdown("---")
 
+    st.markdown("### System Status")
 
-    st.markdown(
-        """
-        <div style="
-            background:white;
-            border:1px solid #efc6da;
-            border-radius:15px;
-            padding:15px;
-        ">
+    if MODEL_PATH is not None:
 
-            <b style="color:#8f1858;">
-                Project Owner
-            </b>
+        st.success("Model Found")
 
-            <br>
+        st.caption(
+            f"Model: {MODEL_PATH.name}"
+        )
 
-            <span style="color:#333333;">
-                Devadharshini Murugan
-            </span>
+    else:
 
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+        st.error("Model Not Found")
 
+    if fraud_detection_agent is not None:
 
-    st.write("")
+        st.success("Agent Ready")
 
+    else:
 
-    # --------------------------------------------------------
-    # SYSTEM STATUS
-    # --------------------------------------------------------
-
-    st.markdown(
-        """
-        <div style="
-            background:white;
-            border:1px solid #efc6da;
-            border-radius:15px;
-            padding:15px;
-        ">
-
-            <b style="color:#8f1858;">
-                System Status
-            </b>
-
-            <br><br>
-
-            <span style="color:#333333;">
-                🟢 Model: Loaded
-            </span>
-
-            <br>
-
-            <span style="color:#333333;">
-                🟢 Agent: Active
-            </span>
-
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+        st.error("Agent Not Loaded")
 
 
 # ============================================================
@@ -1547,286 +830,200 @@ with st.sidebar:
 if page == "🏠 Dashboard":
 
     st.markdown(
+        '<div class="main-title">🛡️ FraudGuard AI</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
         """
-        <div class="hero">
-
-            <h1>
-                💳 FraudGuard AI
-            </h1>
-
-            <p>
-                Intelligent Credit Card Fraud Detection &
-                Agentic Risk Decision System
-            </p>
-
-            <p style="margin-top:12px;">
-                Built by <b>Devadharshini Murugan</b>
-            </p>
-
+        <div class="subtitle">
+        AI-powered credit card fraud detection with automated
+        risk assessment and business decision support.
         </div>
         """,
         unsafe_allow_html=True
     )
 
-
+    # Model metrics
     st.markdown(
-        '<div class="section-title">🛡️ Intelligent Fraud Protection</div>',
-        unsafe_allow_html=True
+        "### 📊 Model Performance"
     )
-
-
-    st.markdown(
-        """
-        <div class="section-text">
-
-            FraudGuard AI analyzes credit card transactions
-            using a trained XGBoost Machine Learning model
-            and then uses an agentic decision workflow to
-            assess risk and recommend a business action.
-
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-
-    st.write("")
-
-
-    # --------------------------------------------------------
-    # WORKFLOW
-    # --------------------------------------------------------
-
-    st.markdown(
-        '<div class="section-title">⚙️ How the System Works</div>',
-        unsafe_allow_html=True
-    )
-
-
-    c1, c2, c3, c4 = st.columns(4)
-
-
-    with c1:
-
-        st.markdown(
-            """
-            <div class="workflow-box">
-
-                <div class="workflow-icon">
-                    💳
-                </div>
-
-                <div class="workflow-title">
-                    1. Transaction
-                </div>
-
-                <div class="workflow-text">
-                    Transaction details are provided as input.
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-    with c2:
-
-        st.markdown(
-            """
-            <div class="workflow-box">
-
-                <div class="workflow-icon">
-                    🧠
-                </div>
-
-                <div class="workflow-title">
-                    2. ML Prediction
-                </div>
-
-                <div class="workflow-text">
-                    XGBoost predicts the probability of fraud.
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-    with c3:
-
-        st.markdown(
-            """
-            <div class="workflow-box">
-
-                <div class="workflow-icon">
-                    🎯
-                </div>
-
-                <div class="workflow-title">
-                    3. Risk Assessment
-                </div>
-
-                <div class="workflow-text">
-                    The agent converts probability into a risk level.
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-    with c4:
-
-        st.markdown(
-            """
-            <div class="workflow-box">
-
-                <div class="workflow-icon">
-                    🚦
-                </div>
-
-                <div class="workflow-title">
-                    4. Decision
-                </div>
-
-                <div class="workflow-text">
-                    The system recommends Approve, Review or Block.
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-    st.write("")
-
-
-    # --------------------------------------------------------
-    # MODEL PERFORMANCE
-    # --------------------------------------------------------
-
-    st.markdown(
-        '<div class="section-title">📊 Model Performance</div>',
-        unsafe_allow_html=True
-    )
-
 
     m1, m2, m3, m4 = st.columns(4)
-
 
     with m1:
 
         st.markdown(
             """
             <div class="metric-card">
-
-                <div class="metric-number">
-                    98.73%
-                </div>
-
-                <div class="metric-label">
-                    Precision
-                </div>
-
+                <div class="metric-number">98.73%</div>
+                <div class="metric-label">Precision</div>
             </div>
             """,
             unsafe_allow_html=True
         )
-
 
     with m2:
 
         st.markdown(
             """
             <div class="metric-card">
-
-                <div class="metric-number">
-                    82.11%
-                </div>
-
-                <div class="metric-label">
-                    Recall
-                </div>
-
+                <div class="metric-number">82.11%</div>
+                <div class="metric-label">Recall</div>
             </div>
             """,
             unsafe_allow_html=True
         )
-
 
     with m3:
 
         st.markdown(
             """
             <div class="metric-card">
-
-                <div class="metric-number">
-                    89.66%
-                </div>
-
-                <div class="metric-label">
-                    F1 Score
-                </div>
-
+                <div class="metric-number">89.66%</div>
+                <div class="metric-label">F1 Score</div>
             </div>
             """,
             unsafe_allow_html=True
         )
-
 
     with m4:
 
         st.markdown(
             """
             <div class="metric-card">
-
-                <div class="metric-number">
-                    98.35%
-                </div>
-
-                <div class="metric-label">
-                    ROC-AUC
-                </div>
-
+                <div class="metric-number">98.35%</div>
+                <div class="metric-label">ROC-AUC</div>
             </div>
             """,
             unsafe_allow_html=True
         )
 
-
     st.write("")
 
-
+    # Objective
     st.markdown(
         """
         <div class="info-card">
 
-            <h3>
-                🚀 Project Objective
-            </h3>
+        <h3>🚀 Project Objective</h3>
 
-            <p>
-                The objective of this project is to identify
-                potentially fraudulent credit card transactions
-                while reducing unnecessary false alerts on
-                genuine transactions.
-            </p>
+        <p>
+        FraudGuard AI is designed to identify potentially fraudulent
+        credit card transactions and support faster financial
+        decision-making.
+        </p>
 
-            <p>
-                Because fraud transactions are highly imbalanced
-                compared with genuine transactions, Precision,
-                Recall, F1 Score and ROC-AUC are used instead of
-                relying only on accuracy.
-            </p>
+        <p>
+        The system combines machine learning prediction with
+        risk assessment and business-action recommendation.
+        </p>
 
         </div>
         """,
         unsafe_allow_html=True
     )
+
+    st.write("")
+
+    # Dataset Insights
+    st.markdown("### 📊 Dataset Insights")
+
+    d1, d2, d3, d4 = st.columns(4)
+
+    with d1:
+
+        st.metric(
+            "Transaction Features",
+            "30"
+        )
+
+    with d2:
+
+        st.metric(
+            "Main Features",
+            "Time + V1–V28 + Amount"
+        )
+
+    with d3:
+
+        st.metric(
+            "Target Column",
+            "Class"
+        )
+
+    with d4:
+
+        st.metric(
+            "Prediction Type",
+            "Binary Classification"
+        )
+
+    st.markdown(
+        """
+        <div class="info-card">
+
+        <h3>🔎 Understanding the Dataset</h3>
+
+        <p>
+        The dataset contains credit card transaction records used
+        to identify whether a transaction is legitimate or fraudulent.
+        </p>
+
+        <p>
+        The model uses <b>Time</b>, <b>V1–V28</b> and
+        <b>Amount</b> as transaction features. The
+        <b>Class</b> column represents the target used for
+        fraud classification and is not passed as an input feature
+        during prediction.
+        </p>
+
+        <p>
+        The transaction data is given to the trained ML model.
+        The resulting fraud probability is then returned through
+        the agentic workflow as the risk assessment and recommended
+        business action.
+        </p>
+
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.write("")
+
+    # Workflow
+    st.markdown("### 🔄 Fraud Detection Workflow")
+
+    w1, w2, w3, w4 = st.columns(4)
+
+    with w1:
+
+        st.info(
+            "1️⃣ Transaction\n\n"
+            "Transaction data is provided to the system."
+        )
+
+    with w2:
+
+        st.info(
+            "2️⃣ ML Prediction\n\n"
+            "The trained fraud model predicts fraud probability."
+        )
+
+    with w3:
+
+        st.info(
+            "3️⃣ Risk Assessment\n\n"
+            "Probability is converted into a risk level."
+        )
+
+    with w4:
+
+        st.info(
+            "4️⃣ Business Decision\n\n"
+            "The system recommends Approve, Review or Block."
+        )
 
 
 # ============================================================
@@ -1836,53 +1033,26 @@ if page == "🏠 Dashboard":
 elif page == "🔍 Fraud Detection":
 
     st.markdown(
-        '<div class="section-title">🔍 Fraud Detection</div>',
+        '<div class="main-title">🔍 Fraud Detection</div>',
         unsafe_allow_html=True
     )
 
-
     st.markdown(
         """
-        <div class="section-text">
-
-            Enter a transaction below and run the FraudGuard AI
-            agent. The system will generate a fraud probability,
-            risk level and recommended action.
-
+        <div class="subtitle">
+        Select a transaction from the project dataset or enter
+        transaction values manually.
         </div>
         """,
         unsafe_allow_html=True
     )
-
-
-    st.write("")
-
 
     # --------------------------------------------------------
     # INPUT METHOD
     # --------------------------------------------------------
 
-    st.markdown(
-        """
-        <div class="input-box">
-
-            <div class="input-title">
-                1️⃣ Provide Transaction Input
-            </div>
-
-            <div class="input-description">
-                Select a transaction from the project dataset
-                or enter the transaction features manually.
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-
     input_method = st.radio(
-        "Choose input method",
+        "Choose transaction input",
         [
             "Select from Project Dataset",
             "Manual Input"
@@ -1890,313 +1060,266 @@ elif page == "🔍 Fraud Detection":
         horizontal=True
     )
 
-
     transaction = None
 
-
-    # ========================================================
-    # PROJECT DATASET INPUT
-    # ========================================================
+    # --------------------------------------------------------
+    # DATASET INPUT
+    # --------------------------------------------------------
 
     if input_method == "Select from Project Dataset":
 
-        try:
+        st.markdown("### 📂 Project Dataset")
 
-            demo_df, dataset_path = load_project_dataset()
-
-
-            st.success(
-                f"Project dataset loaded successfully: "
-                f"{len(demo_df):,} transactions"
-            )
-
-
-            # ------------------------------------------------
-            # Row selector
-            # ------------------------------------------------
-
-            if len(demo_df) <= 5000:
-
-                selected_row_number = st.selectbox(
-                    "Select Transaction",
-                    range(len(demo_df)),
-                    format_func=lambda x: f"Transaction {x + 1}"
-                )
-
-            else:
-
-                selected_row_number = st.number_input(
-                    "Select Transaction Row",
-                    min_value=1,
-                    max_value=len(demo_df),
-                    value=1,
-                    step=1
-                ) - 1
-
-
-            selected_row = demo_df.iloc[
-                int(selected_row_number)
-            ]
-
-
-            # ------------------------------------------------
-            # Remove target column
-            # ------------------------------------------------
-
-            transaction = selected_row.to_dict()
-
-
-            for target_column in [
-                "Class",
-                "class",
-                "Target",
-                "target",
-                "Fraud",
-                "fraud"
-            ]:
-
-                transaction.pop(
-                    target_column,
-                    None
-                )
-
-
-            # ------------------------------------------------
-            # Display transaction
-            # ------------------------------------------------
-
-            with st.expander(
-                "👁️ View Selected Transaction"
-            ):
-
-                display_df = pd.DataFrame(
-                    [transaction]
-                )
-
-                st.dataframe(
-                    display_df,
-                    width="stretch"
-                )
-
-
-        except Exception as e:
+        if DATASET_PATH is None:
 
             st.error(
-                f"Could not load the project dataset: {e}"
+                "Project dataset was not found."
             )
 
-
-    # ========================================================
-    # MANUAL INPUT
-    # ========================================================
-
-    else:
-
-        st.markdown(
-            """
-            <div class="info-card">
-
-                <h3>
-                    📝 Transaction Features
-                </h3>
-
-                <p>
-                    Enter values for the transaction features
-                    used by the trained XGBoost model.
-                </p>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-        st.write("")
-
-
-        # ----------------------------------------------------
-        # Time
-        # ----------------------------------------------------
-
-        time_value = st.number_input(
-            "Time",
-            value=0.0,
-            help="Transaction time value from the dataset."
-        )
-
-
-        # ----------------------------------------------------
-        # Amount
-        # ----------------------------------------------------
-
-        amount_value = st.number_input(
-            "Amount",
-            min_value=0.0,
-            value=100.0,
-            help="Transaction amount."
-        )
-
-
-        st.markdown(
-            "### 🔢 PCA Transaction Features"
-        )
-
-
-        v_values = {}
-
-
-        columns = [
-            f"V{i}"
-            for i in range(1, 29)
-        ]
-
-
-        col_groups = [
-            columns[0:7],
-            columns[7:14],
-            columns[14:21],
-            columns[21:28]
-        ]
-
-
-        cols = st.columns(4)
-
-
-        for col_container, group in zip(
-            cols,
-            col_groups
-        ):
-
-            with col_container:
-
-                for feature in group:
-
-                    v_values[feature] = st.number_input(
-                        feature,
-                        value=0.0,
-                        format="%.6f"
-                    )
-
-
-        transaction = {
-            "Time": time_value,
-            **v_values,
-            "Amount": amount_value
-        }
-
-
-    # ========================================================
-    # PREDICTION BUTTON
-    # ========================================================
-
-    st.write("")
-
-
-    st.markdown(
-        """
-        <div class="input-box">
-
-            <div class="input-title">
-                2️⃣ Run AI Fraud Detection
-            </div>
-
-            <div class="input-description">
-                The agent will coordinate the ML prediction,
-                risk assessment and final business decision.
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-
-    predict_button = st.button(
-        "🚀 Run FraudGuard AI",
-        type="primary"
-    )
-
-
-    # ========================================================
-    # OUTPUT
-    # ========================================================
-
-    if predict_button:
-
-        if transaction is None:
-
-            st.error(
-                "Please provide a transaction first."
+            st.info(
+                "Add your credit card CSV file to the same "
+                "GitHub repository as app.py."
             )
 
         else:
 
             try:
 
-                # ------------------------------------------------
-                # Clean transaction
-                # ------------------------------------------------
+                df = load_project_dataset(
+                    str(DATASET_PATH)
+                )
+
+                st.success(
+                    f"Dataset loaded: {DATASET_PATH.name} "
+                    f"({len(df):,} transactions)"
+                )
+
+                # --------------------------------------------
+                # Transaction selector
+                # --------------------------------------------
+
+                if len(df) <= 5000:
+
+                    selected_label = st.selectbox(
+                        "Select Transaction",
+                        [
+                            f"Transaction {i + 1}"
+                            for i in range(len(df))
+                        ]
+                    )
+
+                    selected_index = int(
+                        selected_label.split()[-1]
+                    ) - 1
+
+                else:
+
+                    st.info(
+                        "Large dataset detected. "
+                        "Use the transaction number below."
+                    )
+
+                    selected_index = st.number_input(
+                        "Transaction number",
+                        min_value=1,
+                        max_value=len(df),
+                        value=1,
+                        step=1
+                    ) - 1
+
+                selected_row = df.iloc[
+                    int(selected_index)
+                ]
+
+                # Show selected transaction
+                st.markdown("### 👁️ Selected Transaction")
+
+                display_row = selected_row.to_frame().T
+
+                st.dataframe(
+                    display_row,
+                    width="stretch",
+                    hide_index=True
+                )
+
+                # Remove target column
+                transaction_series = selected_row.copy()
+
+                if "Class" in transaction_series.index:
+
+                    transaction_series = transaction_series.drop(
+                        "Class"
+                    )
+
+                if "class" in transaction_series.index:
+
+                    transaction_series = transaction_series.drop(
+                        "class"
+                    )
+
+                transaction = transaction_series.to_dict()
+
+            except Exception as e:
+
+                st.error(
+                    f"Unable to load project dataset: {e}"
+                )
+
+
+    # --------------------------------------------------------
+    # MANUAL INPUT
+    # --------------------------------------------------------
+
+    else:
+
+        st.markdown("### ✍️ Manual Transaction Input")
+
+        st.caption(
+            "Enter the transaction features required by the fraud model."
+        )
+
+        # Time + Amount
+        c1, c2 = st.columns(2)
+
+        with c1:
+
+            time_value = st.number_input(
+                "Time",
+                value=0.0,
+                step=1.0
+            )
+
+        with c2:
+
+            amount_value = st.number_input(
+                "Amount",
+                value=100.0,
+                min_value=0.0,
+                step=10.0
+            )
+
+        transaction = {}
+
+        transaction["Time"] = time_value
+
+        # V1-V28
+        st.markdown("### 🔢 Transaction Features")
+
+        v_columns = [
+            f"V{i}"
+            for i in range(1, 29)
+        ]
+
+        for start in range(0, 28, 4):
+
+            cols = st.columns(4)
+
+            for j, col in enumerate(
+                v_columns[start:start + 4]
+            ):
+
+                with cols[j]:
+
+                    transaction[col] = st.number_input(
+                        col,
+                        value=0.0,
+                        step=0.01,
+                        format="%.6f",
+                        key=f"manual_{col}"
+                    )
+
+        transaction["Amount"] = amount_value
+
+    # --------------------------------------------------------
+    # PREDICT
+    # --------------------------------------------------------
+
+    st.write("")
+
+    if st.button(
+        "🚀 Predict Fraud Risk",
+        type="primary",
+        width="stretch"
+    ):
+
+        if transaction is None:
+
+            st.warning(
+                "Please provide a transaction first."
+            )
+
+        elif fraud_detection_agent is None:
+
+            st.error(
+                "Fraud detection agent is not available."
+            )
+
+            if agent_import_error:
+
+                st.code(
+                    agent_import_error
+                )
+
+            if MODEL_PATH is None:
+
+                st.warning(
+                    "The trained model file was not found "
+                    "inside the deployed repository."
+                )
+
+        else:
+
+            try:
+
+                # --------------------------------------------
+                # Ensure numeric values
+                # --------------------------------------------
 
                 cleaned_transaction = {}
 
-                for feature in DEFAULT_FEATURE_COLUMNS:
+                for key, value in transaction.items():
 
-                    if feature in transaction:
+                    try:
 
-                        value = transaction[feature]
+                        cleaned_transaction[key] = float(value)
 
-                        try:
-                            value = float(value)
-                        except Exception:
-                            pass
+                    except Exception:
 
-                        cleaned_transaction[feature] = value
+                        cleaned_transaction[key] = value
 
-
-                # ------------------------------------------------
-                # Make sure all required features exist
-                # ------------------------------------------------
-
-                for feature in DEFAULT_FEATURE_COLUMNS:
-
-                    if feature not in cleaned_transaction:
-
-                        cleaned_transaction[feature] = 0.0
-
-
-                # ------------------------------------------------
-                # Agent execution
-                # ------------------------------------------------
+                # --------------------------------------------
+                # Run actual agent
+                # --------------------------------------------
 
                 with st.spinner(
-                    "FraudGuard AI agent is analyzing the transaction..."
+                    "Running FraudGuard AI..."
                 ):
 
                     result = fraud_detection_agent(
                         cleaned_transaction
                     )
 
-
-                # ------------------------------------------------
-                # Display actual result
-                # ------------------------------------------------
+                # --------------------------------------------
+                # Show result directly below button
+                # --------------------------------------------
 
                 display_prediction_result(
                     result
                 )
 
-
             except Exception as e:
 
                 st.error(
-                    f"Prediction failed: {e}"
+                    "Prediction failed."
                 )
 
+                st.code(
+                    str(e)
+                )
 
                 st.info(
-                    "Please verify that the trained model and "
-                    "required project files are available in "
-                    "the repository."
+                    "Check that the transaction columns match "
+                    "the features expected by the trained model."
                 )
 
 
@@ -2207,213 +1330,129 @@ elif page == "🔍 Fraud Detection":
 elif page == "🤖 Agentic AI":
 
     st.markdown(
-        '<div class="section-title">🤖 Agentic AI Decision Engine</div>',
+        '<div class="main-title">🤖 Agentic AI</div>',
         unsafe_allow_html=True
     )
 
-
     st.markdown(
         """
-        <div class="section-text">
-
-            FraudGuard AI uses a tool-based agentic workflow.
-            Instead of only returning a Machine Learning prediction,
-            the agent coordinates multiple tools to produce a
-            complete fraud-risk decision.
-
+        <div class="subtitle">
+        FraudGuard AI uses an agent-based workflow to convert
+        machine-learning predictions into actionable business decisions.
         </div>
         """,
         unsafe_allow_html=True
     )
 
+    st.markdown("### 🔄 Agent Workflow")
+
+    a1, a2, a3, a4 = st.columns(4)
+
+    with a1:
+
+        st.info(
+            "📥 Transaction\n\n"
+            "Receives the transaction features."
+        )
+
+    with a2:
+
+        st.info(
+            "🧠 Fraud Prediction\n\n"
+            "The trained ML model generates fraud probability."
+        )
+
+    with a3:
+
+        st.info(
+            "🎯 Risk Assessment\n\n"
+            "The probability is converted into LOW, MEDIUM or HIGH risk."
+        )
+
+    with a4:
+
+        st.info(
+            "🚦 Business Decision\n\n"
+            "The system recommends APPROVE, REVIEW or BLOCK."
+        )
 
     st.write("")
 
-
-    # --------------------------------------------------------
-    # Agent Workflow
-    # --------------------------------------------------------
-
-    st.markdown(
-        """
-        <div class="info-card">
-
-            <h3>
-                🔄 Agent Workflow
-            </h3>
-
-            <p style="
-                font-size:17px;
-                font-weight:700;
-            ">
-
-                Transaction
-                →
-                ML Prediction
-                →
-                Risk Assessment
-                →
-                Business Decision
-
-            </p>
-
-            <p>
-
-                The agent receives a transaction, calls the
-                prediction tool, evaluates the resulting fraud
-                probability, determines the risk level and
-                finally recommends an action.
-
-            </p>
-
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-
-    st.write("")
-
-
-    c1, c2, c3 = st.columns(3)
-
-
-    with c1:
-
-        st.markdown(
-            """
-            <div class="info-card">
-
-                <h3>
-                    🧠 Tool 1 — Fraud Prediction
-                </h3>
-
-                <p>
-                    The trained XGBoost model analyzes transaction
-                    features and returns a fraud probability.
-                </p>
-
-                <p>
-                    <b>Input:</b>
-                    Transaction features
-                </p>
-
-                <p>
-                    <b>Output:</b>
-                    Fraud probability + prediction
-                </p>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-    with c2:
-
-        st.markdown(
-            """
-            <div class="info-card">
-
-                <h3>
-                    🎯 Tool 2 — Risk Assessment
-                </h3>
-
-                <p>
-                    The agent interprets the fraud probability
-                    and assigns a risk category.
-                </p>
-
-                <p>
-                    <b>LOW:</b>
-                    below 30%
-                </p>
-
-                <p>
-                    <b>MEDIUM:</b>
-                    30% to below 70%
-                </p>
-
-                <p>
-                    <b>HIGH:</b>
-                    70% and above
-                </p>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-    with c3:
-
-        st.markdown(
-            """
-            <div class="info-card">
-
-                <h3>
-                    🚦 Tool 3 — Business Decision
-                </h3>
-
-                <p>
-                    The agent converts the risk level into an
-                    operational recommendation.
-                </p>
-
-                <p>
-                    <b>LOW → APPROVE</b>
-                </p>
-
-                <p>
-                    <b>MEDIUM → REVIEW</b>
-                </p>
-
-                <p>
-                    <b>HIGH → BLOCK</b>
-                </p>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-    st.write("")
-
-
-    # --------------------------------------------------------
-    # Why Agentic AI
-    # --------------------------------------------------------
-
+    # Tool 1
     st.markdown(
         """
         <div class="info-card">
 
-            <h3>
-                💡 Why Agentic AI?
-            </h3>
+        <h3>🧠 Tool 1 — Fraud Prediction</h3>
 
-            <p>
+        <p>
+        The trained machine-learning model analyzes the transaction
+        features and produces a fraud probability.
+        </p>
 
-                A traditional Machine Learning model only predicts
-                whether a transaction is likely to be fraudulent.
-                The agentic layer extends this by coordinating
-                prediction, risk assessment and decision-making
-                into one automated workflow.
+        <p>
+        <b>Input:</b> Transaction features
+        </p>
 
-            </p>
-
-            <p>
-
-                This makes the system easier to interpret and
-                demonstrates how Machine Learning models can be
-                integrated into AI-driven business decision systems.
-
-            </p>
+        <p>
+        <b>Output:</b> Fraud probability + prediction
+        </p>
 
         </div>
         """,
         unsafe_allow_html=True
+    )
+
+    # Tool 2
+    st.markdown(
+        """
+        <div class="info-card">
+
+        <h3>🎯 Tool 2 — Risk Assessment</h3>
+
+        <p>
+        The fraud probability is interpreted as a business risk level.
+        </p>
+
+        <p>
+        <b>LOW:</b> below 30% &nbsp;&nbsp;
+        <b>MEDIUM:</b> 30% to below 70% &nbsp;&nbsp;
+        <b>HIGH:</b> 70% or above
+        </p>
+
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # Tool 3
+    st.markdown(
+        """
+        <div class="info-card">
+
+        <h3>🚦 Tool 3 — Business Decision</h3>
+
+        <p>
+        The agent converts the risk level into an operational
+        recommendation.
+        </p>
+
+        <p>
+        <b>LOW → APPROVE</b><br>
+        <b>MEDIUM → REVIEW</b><br>
+        <b>HIGH → BLOCK</b>
+        </p>
+
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.write("")
+
+    st.success(
+        "The actual agent is executed from the Fraud Detection tab. "
+        "This tab explains the agent architecture and workflow."
     )
 
 
@@ -2424,279 +1463,95 @@ elif page == "🤖 Agentic AI":
 elif page == "ℹ️ About Project":
 
     st.markdown(
-        '<div class="section-title">ℹ️ About the Project</div>',
+        '<div class="main-title">ℹ️ About Project</div>',
         unsafe_allow_html=True
     )
 
-
     st.markdown(
         """
-        <div class="section-text">
-
-            A Machine Learning and Agentic AI based system for
-            detecting fraudulent credit card transactions and
-            generating risk-based business decisions.
-
+        <div class="subtitle">
+        Credit Card Fraud Detection using Machine Learning
+        and Agentic AI.
         </div>
         """,
         unsafe_allow_html=True
     )
-
-
-    st.write("")
-
-
-    c1, c2 = st.columns(2)
-
-
-    with c1:
-
-        st.markdown(
-            """
-            <div class="info-card">
-
-                <h3>
-                    📌 Project Information
-                </h3>
-
-                <p>
-                    <b>Project:</b>
-                    Credit Card Fraud Detection
-                </p>
-
-                <p>
-                    <b>Developer:</b>
-                    Devadharshini Murugan
-                </p>
-
-                <p>
-                    <b>Machine Learning Model:</b>
-                    XGBoost
-                </p>
-
-                <p>
-                    <b>Application:</b>
-                    Streamlit
-                </p>
-
-                <p>
-                    <b>AI Layer:</b>
-                    Tool-Based Agentic AI
-                </p>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-    with c2:
-
-        st.markdown(
-            """
-            <div class="info-card">
-
-                <h3>
-                    📊 Dataset
-                </h3>
-
-                <p>
-                    The project uses a highly imbalanced
-                    credit card transaction dataset.
-                </p>
-
-                <p>
-                    <b>Total records after duplicate removal:</b>
-                    25,465
-                </p>
-
-                <p>
-                    <b>Genuine transactions:</b>
-                    24,992
-                </p>
-
-                <p>
-                    <b>Fraudulent transactions:</b>
-                    473
-                </p>
-
-                <p>
-                    <b>Fraud percentage:</b>
-                    1.86%
-                </p>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-    st.write("")
-
-
-    st.markdown(
-        '<div class="section-title">🏆 Final Model Performance</div>',
-        unsafe_allow_html=True
-    )
-
-
-    p1, p2, p3, p4 = st.columns(4)
-
-
-    with p1:
-
-        st.markdown(
-            """
-            <div class="metric-card">
-
-                <div class="metric-number">
-                    98.73%
-                </div>
-
-                <div class="metric-label">
-                    Precision
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-    with p2:
-
-        st.markdown(
-            """
-            <div class="metric-card">
-
-                <div class="metric-number">
-                    82.11%
-                </div>
-
-                <div class="metric-label">
-                    Recall
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-    with p3:
-
-        st.markdown(
-            """
-            <div class="metric-card">
-
-                <div class="metric-number">
-                    89.66%
-                </div>
-
-                <div class="metric-label">
-                    F1 Score
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-    with p4:
-
-        st.markdown(
-            """
-            <div class="metric-card">
-
-                <div class="metric-number">
-                    98.35%
-                </div>
-
-                <div class="metric-label">
-                    ROC-AUC
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-    st.write("")
-
 
     st.markdown(
         """
         <div class="info-card">
 
-            <h3>
-                🧪 Models Evaluated
-            </h3>
+        <h3>🛡️ FraudGuard AI</h3>
 
-            <p>
-                Multiple approaches were evaluated during
-                the project:
-            </p>
+        <p>
+        FraudGuard AI is a machine-learning based fraud detection
+        application designed to identify potentially fraudulent
+        credit card transactions.
+        </p>
 
-            <ul>
-
-                <li>
-                    Random Forest — Baseline
-                </li>
-
-                <li>
-                    Random Forest — Undersampling
-                </li>
-
-                <li>
-                    Random Forest — Oversampling
-                </li>
-
-                <li>
-                    XGBoost — Baseline
-                </li>
-
-                <li>
-                    XGBoost — Undersampling
-                </li>
-
-                <li>
-                    XGBoost — Oversampling
-                </li>
-
-            </ul>
-
-            <p>
-
-                The <b>XGBoost Baseline</b> model was selected
-                based on its strong overall performance and
-                highest ROC-AUC of <b>98.35%</b>.
-
-            </p>
+        <p>
+        The application combines a trained fraud detection model
+        with an agentic decision workflow for risk assessment
+        and recommended business action.
+        </p>
 
         </div>
         """,
         unsafe_allow_html=True
     )
 
+    st.markdown("### 🧰 Technology Stack")
 
-# ============================================================
-# FOOTER
-# ============================================================
+    t1, t2, t3, t4 = st.columns(4)
 
-st.markdown(
-    """
-    <div class="footer">
+    with t1:
+        st.info("🐍 Python")
 
-        FraudGuard AI • Credit Card Fraud Detection &
-        Agentic Risk Decision System
+    with t2:
+        st.info("📊 Pandas")
 
-        <br>
+    with t3:
+        st.info("🤖 Machine Learning")
 
-        Built by <b>Devadharshini Murugan</b>
+    with t4:
+        st.info("🎈 Streamlit")
 
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+    st.write("")
+
+    st.markdown("### 📌 Project Components")
+
+    components = pd.DataFrame(
+        {
+            "Component": [
+                "Machine Learning Model",
+                "Fraud Prediction",
+                "Risk Assessment",
+                "Business Decision",
+                "Web Application"
+            ],
+            "Purpose": [
+                "Detect fraudulent transactions",
+                "Generate fraud probability",
+                "Determine risk level",
+                "Recommend operational action",
+                "Provide an interactive interface"
+            ]
+        }
+    )
+
+    st.dataframe(
+        components,
+        width="stretch",
+        hide_index=True
+    )
+
+    st.write("")
+
+    st.markdown(
+        """
+        <div class="footer">
+        FraudGuard AI • Credit Card Fraud Detection • Machine Learning + Agentic AI
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
