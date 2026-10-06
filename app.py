@@ -166,6 +166,48 @@ st.markdown(
         border-radius: 10px;
     }
 
+    /* ---------- DROPDOWN VISIBILITY FIX ---------- */
+
+    div[data-baseweb="select"] > div {
+        background: #ffffff !important;
+    }
+
+    div[data-baseweb="select"] *,
+    div[data-baseweb="select"] input {
+        color: #202020 !important;
+        -webkit-text-fill-color: #202020 !important;
+    }
+
+    div[data-baseweb="select"] svg {
+        fill: #8f1858 !important;
+    }
+
+    div[data-baseweb="popover"],
+    div[data-baseweb="popover"] > div,
+    div[data-baseweb="popover"] ul,
+    ul[role="listbox"] {
+        background: #ffffff !important;
+    }
+
+    div[data-baseweb="popover"] li,
+    ul[role="listbox"] li,
+    li[role="option"],
+    li[role="option"] *,
+    div[data-baseweb="popover"] li * {
+        background: #ffffff !important;
+        color: #202020 !important;
+        -webkit-text-fill-color: #202020 !important;
+    }
+
+    li[role="option"]:hover,
+    li[role="option"]:hover *,
+    li[role="option"][aria-selected="true"],
+    li[role="option"][aria-selected="true"] * {
+        background: #ffd9ea !important;
+        color: #4a1730 !important;
+        -webkit-text-fill-color: #4a1730 !important;
+    }
+
     /* ---------- RESULT ---------- */
 
     .result-card {
