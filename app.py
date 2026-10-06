@@ -168,8 +168,9 @@ st.markdown(
 
     /* ---------- DROPDOWN VISIBILITY FIX ---------- */
 
+    /* closed select box */
     div[data-baseweb="select"] > div {
-        background: #ffffff !important;
+        background-color: #ffffff !important;
     }
 
     div[data-baseweb="select"] *,
@@ -182,28 +183,28 @@ st.markdown(
         fill: #8f1858 !important;
     }
 
+    /* opened dropdown list (every layer inside the popup) */
     div[data-baseweb="popover"],
-    div[data-baseweb="popover"] > div,
-    div[data-baseweb="popover"] ul,
-    ul[role="listbox"] {
-        background: #ffffff !important;
-    }
-
-    div[data-baseweb="popover"] li,
-    ul[role="listbox"] li,
-    li[role="option"],
-    li[role="option"] *,
-    div[data-baseweb="popover"] li * {
-        background: #ffffff !important;
+    div[data-baseweb="popover"] *,
+    div[data-baseweb="menu"],
+    div[data-baseweb="menu"] *,
+    [role="listbox"],
+    [role="listbox"] *,
+    [data-testid="stSelectboxVirtualDropdown"],
+    [data-testid="stSelectboxVirtualDropdown"] * {
+        background-color: #ffffff !important;
         color: #202020 !important;
         -webkit-text-fill-color: #202020 !important;
+        opacity: 1 !important;
+        visibility: visible !important;
     }
 
-    li[role="option"]:hover,
-    li[role="option"]:hover *,
-    li[role="option"][aria-selected="true"],
-    li[role="option"][aria-selected="true"] * {
-        background: #ffd9ea !important;
+    /* hovered / selected option */
+    [role="option"]:hover,
+    [role="option"]:hover *,
+    [role="option"][aria-selected="true"],
+    [role="option"][aria-selected="true"] * {
+        background-color: #ffd9ea !important;
         color: #4a1730 !important;
         -webkit-text-fill-color: #4a1730 !important;
     }
