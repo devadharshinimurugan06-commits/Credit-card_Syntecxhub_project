@@ -23,11 +23,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-    st.markdown(
-        '<div style="font-size:16px; font-weight:700; color:#8f1858; '
-        'margin-bottom:6px;">👩‍💻 Owner: Devadharshini Murugan</div>',
-        unsafe_allow_html=True
-    )
 
 
 # ============================================================
@@ -883,6 +878,12 @@ if page == "🏠 Dashboard":
 
     st.markdown(
         '<div class="main-title">🤖 Agentic AI - Credit Card Fraud Detection</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        '<div style="font-size:16px; font-weight:700; color:#8f1858; '
+        'margin-bottom:6px;">👩‍💻 Owner: Dev Darshini Murugan</div>',
         unsafe_allow_html=True
     )
 
