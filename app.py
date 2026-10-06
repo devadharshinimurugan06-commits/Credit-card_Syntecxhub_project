@@ -23,6 +23,11 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+    st.markdown(
+        '<div style="font-size:16px; font-weight:700; color:#8f1858; '
+        'margin-bottom:6px;">👩‍💻 Owner: Devadharshini Murugan</div>',
+        unsafe_allow_html=True
+    )
 
 
 # ============================================================
