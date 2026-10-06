@@ -883,7 +883,7 @@ if page == "🏠 Dashboard":
 
     st.markdown(
         '<div style="font-size:16px; font-weight:700; color:#8f1858; '
-        'margin-bottom:6px;">👩‍💻 Owner: Dev Darshini Murugan</div>',
+        'margin-bottom:6px;">👩‍💻 Devadharshini Murugan</div>',
         unsafe_allow_html=True
     )
 
